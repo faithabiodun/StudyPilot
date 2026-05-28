@@ -1,0 +1,17 @@
+{
+  "name": "StudyPilot",
+  "short_name": "StudyPilot",
+  "description": "Academic workspace for study planning, PDF study tools, resources, AI advisor, and YouTube to DOCX.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FBFF",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
