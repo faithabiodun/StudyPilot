@@ -116,7 +116,12 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT_VALUE = os.getenv("MEDIA_ROOT", "media")
+if not DEBUG and not os.getenv("MEDIA_ROOT"):
+    MEDIA_ROOT_VALUE = "/tmp/studypilot_media"
+MEDIA_ROOT = Path(MEDIA_ROOT_VALUE)
+if not MEDIA_ROOT.is_absolute():
+    MEDIA_ROOT = BASE_DIR / MEDIA_ROOT
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
@@ -161,6 +166,16 @@ MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))
 MAX_EXTRACTED_TEXT_CHARS = int(os.getenv("MAX_EXTRACTED_TEXT_CHARS", "80000"))
 MAX_DEEPSEEK_CONTEXT_CHARS = int(os.getenv("MAX_DEEPSEEK_CONTEXT_CHARS", "20000"))
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE + (1024 * 1024)
+FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE
+FILE_UPLOAD_TEMP_DIR_VALUE = os.getenv("FILE_UPLOAD_TEMP_DIR", "temp/uploads")
+if not DEBUG and not os.getenv("FILE_UPLOAD_TEMP_DIR"):
+    FILE_UPLOAD_TEMP_DIR_VALUE = "/tmp/studypilot_uploads"
+FILE_UPLOAD_TEMP_DIR = Path(FILE_UPLOAD_TEMP_DIR_VALUE)
+if not FILE_UPLOAD_TEMP_DIR.is_absolute():
+    FILE_UPLOAD_TEMP_DIR = BASE_DIR / FILE_UPLOAD_TEMP_DIR
+for writable_dir in (MEDIA_ROOT, FILE_UPLOAD_TEMP_DIR):
+    writable_dir.mkdir(parents=True, exist_ok=True)
 ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".txt"}
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
