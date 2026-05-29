@@ -79,8 +79,8 @@ Backend environment variables:
 SECRET_KEY=change-me
 DEBUG=True
 ALLOWED_HOSTS=studypilot-r710.onrender.com,localhost,127.0.0.1
-CORS_ALLOWED_ORIGINS=https://studypilot-sigma.vercel.app,http://localhost:5173,http://127.0.0.1:5173
-CSRF_TRUSTED_ORIGINS=https://studypilot-sigma.vercel.app,https://studypilot-r710.onrender.com
+CORS_ALLOWED_ORIGINS=https://nowstudypilot.onrender.com,http://localhost:5173,http://127.0.0.1:5173
+CSRF_TRUSTED_ORIGINS=https://nowstudypilot.onrender.com,https://studypilot-r710.onrender.com
 DATABASE_URL=
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -114,7 +114,7 @@ The frontend should not connect directly to StudyPilot database tables.
 1. Enable Google OAuth in Supabase Auth.
 2. Add local and deployed callback URLs in Supabase:
    - `http://127.0.0.1:5173/auth/callback`
-   - `https://your-frontend.vercel.app/auth/callback`
+   - `https://nowstudypilot.onrender.com/auth/callback`
 3. Set frontend env:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
@@ -183,21 +183,21 @@ Open:
 - Backend health: `http://127.0.0.1:8000/api/health/`
 - API docs: `http://127.0.0.1:8000/api/docs/`
 
-## Deploy Frontend to Vercel
+## Deploy Frontend to Render Static Site
 
-1. Import the repository in Vercel.
+1. Create a Render Static Site from this repository.
 2. Set the frontend project root to `studypilot`.
 3. Use the default Vite build:
    - Install command: `npm install`
    - Build command: `npm run build`
-   - Output directory: `dist`
+   - Publish directory: `dist`
 4. Add frontend environment variables:
    - `VITE_API_BASE_URL=https://studypilot-r710.onrender.com/api`
    - `VITE_SUPABASE_URL=...`
    - `VITE_SUPABASE_ANON_KEY=...`
 5. Deploy.
 
-The frontend includes a `vercel.json` rewrite so React routes work on refresh.
+The frontend includes `public/_redirects` so React routes work on refresh.
 
 ## Push to GitHub
 
@@ -228,8 +228,8 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
    - `SECRET_KEY`
    - `DEBUG=False`
    - `ALLOWED_HOSTS=studypilot-r710.onrender.com,localhost,127.0.0.1`
-   - `CORS_ALLOWED_ORIGINS=https://studypilot-sigma.vercel.app,http://localhost:5173,http://127.0.0.1:5173`
-   - `CSRF_TRUSTED_ORIGINS=https://studypilot-sigma.vercel.app,https://studypilot-r710.onrender.com`
+   - `CORS_ALLOWED_ORIGINS=https://nowstudypilot.onrender.com,http://localhost:5173,http://127.0.0.1:5173`
+   - `CSRF_TRUSTED_ORIGINS=https://nowstudypilot.onrender.com,https://studypilot-r710.onrender.com`
    - `DATABASE_URL`
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
@@ -250,7 +250,7 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
 
 1. Open `https://studypilot-r710.onrender.com/api/health/`.
 2. Open `https://studypilot-r710.onrender.com/api/docs/`.
-3. Open `https://studypilot-sigma.vercel.app`.
+3. Open `https://nowstudypilot.onrender.com`.
 4. Register or sign in.
 5. Test Google OAuth callback.
 6. Upload a PDF and confirm the PDF file is not retained.

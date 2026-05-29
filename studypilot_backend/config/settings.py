@@ -15,6 +15,13 @@ def env_list(name, default=""):
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def append_unique(values, *items):
+    for item in items:
+        if item and item not in values:
+            values.append(item)
+    return values
+
+
 SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-dev-key-change-me")
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,.onrender.com")
@@ -133,9 +140,20 @@ if not MEDIA_ROOT.is_absolute():
     MEDIA_ROOT = BASE_DIR / MEDIA_ROOT
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "https://studypilot-sigma.vercel.app,http://localhost:5173,http://127.0.0.1:5173")
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "https://nowstudypilot.onrender.com,http://localhost:5173,http://127.0.0.1:5173")
+append_unique(
+    CORS_ALLOWED_ORIGINS,
+    "https://nowstudypilot.onrender.com",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "https://nowstudypilot.onrender.com,https://studypilot-r710.onrender.com")
+append_unique(
+    CSRF_TRUSTED_ORIGINS,
+    "https://nowstudypilot.onrender.com",
+    "https://studypilot-r710.onrender.com",
+)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
