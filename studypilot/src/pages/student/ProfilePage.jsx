@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
-import { BookOpen, Briefcase, CheckCircle, GraduationCap, Layers, Plus, ShieldCheck, Sparkles, Target, Trash2, User } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlertTriangle, BookOpen, Briefcase, CheckCircle, GraduationCap, Layers, Plus, ShieldCheck, Sparkles, Target, Trash2, User, X } from "lucide-react";
 import Button from "../../components/common/Button";
 import DashboardCard from "../../components/common/DashboardCard";
 import Input from "../../components/common/Input";
 import Select from "../../components/common/Select";
+import Toast from "../../components/common/Toast";
 import PageHeader from "../../components/layout/PageHeader";
 import { useAuth } from "../../context/AuthContext";
-import { updateProfile } from "../../services/authService";
+import { deleteAccount as deleteAccountRequest, updateProfile } from "../../services/authService";
 import { getCourseLabel, getCourses, getFirstName, getFullName } from "../../utils/user";
 
 function InfoCard({ icon: Icon, title, children }) {
@@ -51,10 +53,16 @@ function csvToList(value) {
 }
 
 export default function ProfilePage() {
+  const navigate = useNavigate();
   const { user, completeAuth } = useAuth();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [toast, setToast] = useState("");
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [form, setForm] = useState({
     full_name: getFullName(user),
     matric_number: user?.matric_number || "",
@@ -155,8 +163,33 @@ export default function ProfilePage() {
     await saveCourses(nextCourses, "Course deleted successfully.");
   };
 
+  const closeDeleteModal = () => {
+    if (deleting) return;
+    setDeleteModalOpen(false);
+    setDeleteConfirmation("");
+    setDeleteError("");
+  };
+
+  const deleteAccount = async () => {
+    if (deleteConfirmation !== "DELETE") return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteAccountRequest();
+      setToast("Your account has been deleted.");
+      setTimeout(() => {
+        completeAuth(null);
+        navigate("/", { replace: true });
+      }, 900);
+    } catch (error) {
+      setDeleteError(error.message || "Could not delete account.");
+      setDeleting(false);
+    }
+  };
+
   return (
     <div>
+      <Toast message={toast} />
       <PageHeader title="My Profile" subtitle={`Academic Passport for ${getFirstName(user)}. Keep this updated so StudyPilot can personalize your workspace.`} />
       <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
         <DashboardCard>
@@ -275,8 +308,72 @@ export default function ProfilePage() {
               <p>{user?.career_interest || "Career interest not added"}</p>
             </InfoCard>
           </div>
+
+          <DashboardCard title="Danger Zone">
+            <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex gap-3">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-red-600">
+                    <AlertTriangle size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black text-red-900">Delete Account</h3>
+                    <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-red-700">
+                      Permanently delete your StudyPilot account and all associated data. This action cannot be undone.
+                    </p>
+                  </div>
+                </div>
+                <Button variant="danger" icon={Trash2} onClick={() => setDeleteModalOpen(true)} className="w-full md:w-auto">
+                  Delete Account
+                </Button>
+              </div>
+            </div>
+          </DashboardCard>
         </div>
       </div>
+
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+          <div className="w-full max-w-lg rounded-[1.5rem] border border-red-100 bg-white p-6 shadow-pilot">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-600">
+                  <AlertTriangle size={22} />
+                </div>
+                <div>
+                  <h2 id="delete-account-title" className="text-xl font-black text-pilot-ink">Delete your account?</h2>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-pilot-muted">
+                    This will permanently delete your StudyPilot account, profile, uploaded document records, generated flashcards, quizzes, activity history, and saved data. This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <button type="button" onClick={closeDeleteModal} disabled={deleting} className="rounded-xl p-2 text-pilot-muted transition hover:bg-pilot-soft hover:text-pilot-ink" aria-label="Close delete account modal">
+                <X size={18} />
+              </button>
+            </div>
+
+            <label className="mt-6 block">
+              <span className="mb-2 block text-sm font-black text-pilot-ink">Type DELETE to confirm.</span>
+              <Input
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                disabled={deleting}
+                placeholder="DELETE"
+              />
+            </label>
+            {deleteError && <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{deleteError}</p>}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button variant="secondary" onClick={closeDeleteModal} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="danger" icon={Trash2} onClick={deleteAccount} disabled={deleting || deleteConfirmation !== "DELETE"}>
+                {deleting ? "Deleting..." : "Delete Permanently"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

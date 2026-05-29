@@ -66,7 +66,7 @@ def extract_youtube_video_id(url):
 def fetch_video_metadata(url):
     from yt_dlp import YoutubeDL
 
-    with YoutubeDL({"quiet": True, "skip_download": True, "noplaylist": True}) as ydl:
+    with YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True}) as ydl:
         return ydl.extract_info(url, download=False)
 
 
@@ -185,7 +185,7 @@ def build_local_study_document_structure(transcript, metadata, options):
     channel = metadata.get("channel") or "Unknown channel"
     content = [
         "# Introduction",
-        f"This StudyPilot document turns the lecture **{title}** by {channel} into structured study notes. It is generated locally from the available transcript and is not a verbatim copy.",
+        f"This StudyPilot document turns the lecture **{title}** by {channel} into structured study notes. It is created from the available transcript and is not a verbatim copy.",
     ]
     if custom:
         content.append(f"Custom focus: {custom}")
@@ -216,8 +216,15 @@ def build_local_study_document_structure(transcript, metadata, options):
     content.append(_section_markdown("Key Concepts", [f"- **{keyword}**" for keyword in keywords[:24]]))
 
     definition_lines = []
-    for term, definition in definitions[:18]:
-        definition_lines.append(f"- **{term}:** {definition}")
+    for item in definitions[:18]:
+        if isinstance(item, dict):
+            term = item.get("term", "")
+            definition = item.get("definition", "")
+        else:
+            term = item[0] if len(item) > 0 else ""
+            definition = item[1] if len(item) > 1 else ""
+        if term and definition:
+            definition_lines.append(f"- **{term}:** {definition}")
     if not definition_lines:
         for keyword, sentence in zip(keywords[:12], important[:12]):
             definition_lines.append(f"- **{keyword}:** {sentence}")

@@ -11,7 +11,7 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
-from apps.ai.services import AIServiceError, generate_youtube_docx_content_with_deepseek
+from apps.ai.services import AIServiceError, generate_structured_docx_content_with_deepseek
 from apps.documents.services import clean_extracted_text, clean_safe_string
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 class YouTubeDocxError(Exception):
     pass
+
+
+TRANSCRIPT_UNAVAILABLE_MESSAGE = "Transcript is not available for this video."
 
 
 def canonical_youtube_url(video_id):
@@ -72,6 +75,21 @@ def ensure_temp_dir():
     return temp_dir
 
 
+def ensure_audio_temp_dir():
+    temp_dir = Path(settings.YOUTUBE_AUDIO_TEMP_DIR)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir
+
+
+def _delete_temp_path(path):
+    if not path:
+        return
+    try:
+        Path(path).unlink(missing_ok=True)
+    except Exception:
+        logger.warning("YouTube DOCX: could not delete temporary file")
+
+
 def cleanup_old_docx_files():
     temp_dir = ensure_temp_dir()
     expiry = timezone.now() - timedelta(minutes=settings.YOUTUBE_DOCX_EXPIRY_MINUTES)
@@ -82,6 +100,17 @@ def cleanup_old_docx_files():
                 path.unlink(missing_ok=True)
         except Exception:
             logger.warning("Could not clean old YouTube DOCX temp file: %s", path, exc_info=True)
+
+    audio_dir = ensure_audio_temp_dir()
+    for path in audio_dir.glob("*"):
+        if not path.is_file():
+            continue
+        try:
+            modified = timezone.datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.get_current_timezone())
+            if modified < expiry:
+                path.unlink(missing_ok=True)
+        except Exception:
+            logger.warning("Could not clean old YouTube audio temp file.", exc_info=True)
 
 
 def get_temp_docx_path(temp_file_id):
@@ -106,53 +135,120 @@ def _transcript_items_to_text(items):
 def _validate_transcript_text(text):
     cleaned = clean_extracted_text(text)
     if len(cleaned) < 120:
-        raise YouTubeDocxError("Transcript is not available for this YouTube video.")
+        raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
     return cleaned
+
+
+def _fetch_transcript_object(transcript, label):
+    try:
+        text = _validate_transcript_text(_transcript_items_to_text(transcript.fetch()))
+        logger.info("YouTube DOCX: youtube-transcript-api transcript found method=%s", label)
+        return text
+    except Exception:
+        logger.info("YouTube DOCX: youtube-transcript-api transcript attempt failed method=%s", label)
+        return ""
 
 
 def _fetch_transcript_api_text(video_id):
     from youtube_transcript_api import YouTubeTranscriptApi
 
-    api = YouTubeTranscriptApi()
-    preferred_languages = ["en", "en-US", "en-GB"]
+    logger.info("YouTube DOCX: youtube-transcript-api tried video_id=%s", video_id)
+    try:
+        api = YouTubeTranscriptApi()
+        transcript_list = api.list(video_id)
+    except AttributeError:
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+    try:
+        transcripts = list(transcript_list)
+    except Exception as exc:
+        logger.info("YouTube DOCX: youtube-transcript-api list failed video_id=%s", video_id)
+        raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE) from exc
 
-    transcript_list = api.list(video_id)
-    transcript_attempts = [
-        lambda: transcript_list.find_manually_created_transcript(preferred_languages),
-        lambda: transcript_list.find_generated_transcript(preferred_languages),
-        lambda: transcript_list.find_transcript(preferred_languages),
-    ]
-
-    for get_transcript in transcript_attempts:
+    for language in ("en", "en-US", "en-GB"):
         try:
-            transcript = get_transcript()
-            return _validate_transcript_text(_transcript_items_to_text(transcript.fetch()))
+            text = _fetch_transcript_object(transcript_list.find_manually_created_transcript([language]), f"manual_{language}")
+            if text:
+                return text
         except Exception:
             continue
 
-    for transcript in transcript_list:
+    for language in ("en", "en-US", "en-GB"):
+        try:
+            text = _fetch_transcript_object(transcript_list.find_generated_transcript([language]), f"generated_{language}")
+            if text:
+                return text
+        except Exception:
+            continue
+
+    for language in ("en", "en-US", "en-GB"):
+        try:
+            text = _fetch_transcript_object(transcript_list.find_transcript([language]), f"any_{language}")
+            if text:
+                return text
+        except Exception:
+            continue
+
+    for transcript in transcripts:
+        text = _fetch_transcript_object(transcript, "first_available")
+        if text:
+            return text
+
+    for transcript in transcripts:
         try:
             if transcript.is_translatable:
-                return _validate_transcript_text(_transcript_items_to_text(transcript.translate("en").fetch()))
+                text = _fetch_transcript_object(transcript.translate("en"), "translated_to_en")
+                if text:
+                    return text
         except Exception:
             continue
 
-    for transcript in transcript_list:
-        try:
-            return _validate_transcript_text(_transcript_items_to_text(transcript.fetch()))
-        except Exception:
-            continue
+    raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
 
-    raise YouTubeDocxError("Transcript is not available for this YouTube video.")
+
+def _dedupe_caption_lines(text):
+    lines = []
+    previous = ""
+    for line in re.split(r"[\r\n]+", text or ""):
+        cleaned = clean_extracted_text(line)
+        if not cleaned:
+            continue
+        normalized = re.sub(r"\W+", "", cleaned.lower())
+        if normalized and normalized != previous:
+            lines.append(cleaned)
+            previous = normalized
+    return " ".join(lines)
+
+
+def _clean_json3_subtitle(raw_text):
+    try:
+        import json
+
+        payload = json.loads(raw_text or "{}")
+        lines = []
+        for event in payload.get("events", []) or []:
+            parts = []
+            for segment in event.get("segs", []) or []:
+                value = segment.get("utf8", "")
+                if value:
+                    parts.append(value)
+            if parts:
+                lines.append("".join(parts))
+        return clean_extracted_text(_dedupe_caption_lines("\n".join(lines)))
+    except Exception:
+        return ""
 
 
 def _clean_subtitle_text(raw_text):
+    json3_text = _clean_json3_subtitle(raw_text)
+    if json3_text:
+        return json3_text
+
     try:
         import io
         import webvtt
 
         captions = webvtt.read_buffer(io.StringIO(raw_text or ""))
-        parsed = " ".join(caption.text for caption in captions if caption.text)
+        parsed = _dedupe_caption_lines("\n".join(caption.text for caption in captions if caption.text))
         if parsed:
             return clean_extracted_text(parsed)
     except Exception:
@@ -168,29 +264,48 @@ def _clean_subtitle_text(raw_text):
     text = re.sub(r"<[^>]+>", "", text)
     text = re.sub(r"&nbsp;|&amp;|&quot;|&#39;", " ", text)
     text = re.sub(r"\[[^\]]+\]", " ", text)
+    text = _dedupe_caption_lines(text)
     text = re.sub(r"\s+", " ", text)
     return clean_extracted_text(text)
 
 
 def _subtitle_candidates(info):
+    requested = info.get("requested_subtitles") or {}
     subtitles = info.get("subtitles") or {}
     automatic = info.get("automatic_captions") or {}
     preferred = ["en", "en-US", "en-GB"]
     ordered = []
-    for source in (subtitles, automatic):
+    seen = set()
+    for source in (requested, subtitles, automatic):
         for language in preferred:
             for entry in source.get(language, []) or []:
-                ordered.append(entry)
-        for _, entries in source.items():
+                key = entry.get("url") or repr(entry)
+                if key not in seen:
+                    ordered.append(entry)
+                    seen.add(key)
+        for language, entries in source.items():
             for entry in entries or []:
-                ordered.append(entry)
+                key = entry.get("url") or f"{language}:{repr(entry)}"
+                if key not in seen:
+                    ordered.append(entry)
+                    seen.add(key)
     return ordered
 
 
 def _fetch_ytdlp_subtitle_text(youtube_url):
     from yt_dlp import YoutubeDL
 
-    with YoutubeDL({"quiet": True, "skip_download": True, "noplaylist": True}) as ydl:
+    logger.info("YouTube DOCX: yt-dlp subtitle fallback tried")
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "subtitleslangs": ["en", "en-US", "en-GB", "all"],
+    }
+    with YoutubeDL(options) as ydl:
         info = ydl.extract_info(youtube_url, download=False)
 
     for entry in _subtitle_candidates(info):
@@ -200,10 +315,76 @@ def _fetch_ytdlp_subtitle_text(youtube_url):
         try:
             response = requests.get(subtitle_url, timeout=12)
             response.raise_for_status()
-            return _validate_transcript_text(_clean_subtitle_text(response.text))
+            text = _validate_transcript_text(_clean_subtitle_text(response.text))
+            logger.info("YouTube DOCX: transcript found yes source=yt_dlp_subtitles")
+            return text
         except Exception:
             continue
-    raise YouTubeDocxError("Transcript is not available for this YouTube video.")
+    # Future fallback: if captions are unavailable, a permitted local audio
+    # transcription path such as faster-whisper can be added here.
+    raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
+
+
+def _download_youtube_audio(youtube_url, video_id):
+    from yt_dlp import YoutubeDL
+
+    audio_dir = ensure_audio_temp_dir()
+    output_template = str(audio_dir / f"{video_id}_{uuid.uuid4().hex}.%(ext)s")
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "format": "bestaudio/best",
+        "outtmpl": output_template,
+        "noplaylist": True,
+        "socket_timeout": 20,
+        "retries": 2,
+        "fragment_retries": 2,
+    }
+    before = {path.resolve() for path in audio_dir.glob("*") if path.is_file()}
+    with YoutubeDL(options) as ydl:
+        info = ydl.extract_info(youtube_url, download=True)
+        downloaded = ydl.prepare_filename(info)
+    candidate = Path(downloaded)
+    if candidate.exists():
+        return candidate
+    after = [path for path in audio_dir.glob("*") if path.is_file() and path.resolve() not in before]
+    if after:
+        return max(after, key=lambda path: path.stat().st_mtime)
+    raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
+
+
+def _transcribe_audio_with_faster_whisper(audio_path):
+    try:
+        from faster_whisper import WhisperModel
+    except Exception as exc:
+        logger.info("YouTube DOCX: audio transcription unavailable missing_dependency")
+        raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE) from exc
+
+    try:
+        model = WhisperModel(settings.WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
+        segments, _ = model.transcribe(str(audio_path), beam_size=3, vad_filter=True)
+        text = " ".join(segment.text.strip() for segment in segments if getattr(segment, "text", "").strip())
+        return _validate_transcript_text(text)
+    except Exception as exc:
+        logger.info("YouTube DOCX: audio transcription failed")
+        raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE) from exc
+
+
+def _fetch_audio_transcript_text(youtube_url, video_id):
+    if not settings.ENABLE_AUDIO_TRANSCRIPTION:
+        logger.info("YouTube DOCX: audio transcription skipped disabled")
+        raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
+
+    logger.info("YouTube DOCX: audio transcription fallback tried video_id=%s", video_id)
+    audio_path = None
+    try:
+        audio_path = _download_youtube_audio(youtube_url, video_id)
+        transcript = _transcribe_audio_with_faster_whisper(audio_path)
+        logger.info("YouTube DOCX: transcript found yes source=audio_transcription")
+        return transcript
+    finally:
+        if audio_path:
+            _delete_temp_path(audio_path)
 
 
 def fetch_youtube_transcript(video_id):
@@ -212,23 +393,41 @@ def fetch_youtube_transcript(video_id):
     except YouTubeDocxError:
         raise
     except Exception as exc:
-        raise YouTubeDocxError("Transcript is not available for this YouTube video.") from exc
+        raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE) from exc
 
 
-def fetch_youtube_transcript_with_fallback(video_id, youtube_url):
+def fetch_youtube_transcript_with_fallback(video_id, youtube_url, allow_audio=True):
     try:
-        return fetch_youtube_transcript(video_id)
+        text = fetch_youtube_transcript(video_id)
+        logger.info("YouTube DOCX: transcript found yes source=youtube_transcript_api")
+        return text
     except YouTubeDocxError:
         logger.info("youtube-transcript-api did not find a transcript; trying yt-dlp subtitles.")
     try:
         return _fetch_ytdlp_subtitle_text(youtube_url)
     except YouTubeDocxError:
+        logger.info("yt-dlp subtitles did not find a transcript; trying audio transcription.")
+    except Exception as exc:
+        logger.info("yt-dlp subtitles failed unexpectedly; trying audio transcription.")
+    if not allow_audio:
+        raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
+    try:
+        return _fetch_audio_transcript_text(youtube_url, video_id)
+    except YouTubeDocxError:
         raise
     except Exception as exc:
-        raise YouTubeDocxError("Transcript is not available for this YouTube video.") from exc
+        raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE) from exc
+
+
+def get_youtube_transcript(youtube_url):
+    video_id = extract_youtube_video_id(youtube_url)
+    if not video_id:
+        raise YouTubeDocxError("Invalid YouTube link.")
+    return fetch_youtube_transcript_with_fallback(video_id, canonical_youtube_url(video_id), allow_audio=True)
 
 
 def fetch_youtube_metadata(youtube_url, video_id):
+    logger.info("YouTube DOCX: metadata lookup started video_id=%s", video_id)
     metadata = {
         "title": f"YouTube Lecture {video_id}",
         "channel": "",
@@ -241,7 +440,7 @@ def fetch_youtube_metadata(youtube_url, video_id):
     try:
         from yt_dlp import YoutubeDL
 
-        with YoutubeDL({"quiet": True, "skip_download": True, "noplaylist": True}) as ydl:
+        with YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True, "socket_timeout": 12}) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
         metadata.update(
             {
@@ -254,24 +453,55 @@ def fetch_youtube_metadata(youtube_url, video_id):
                 "video_id": video_id,
             }
         )
+        logger.info("YouTube DOCX: metadata fetched yes video_id=%s source=yt_dlp", video_id)
+        return metadata
     except Exception:
-        logger.warning("YouTube metadata lookup failed; using transcript-only metadata.", exc_info=True)
+        logger.warning("YouTube DOCX: yt-dlp metadata lookup failed video_id=%s; trying public metadata fallback.", video_id, exc_info=True)
+
+    try:
+        response = requests.get(
+            "https://www.youtube.com/oembed",
+            params={"url": canonical_youtube_url(video_id), "format": "json"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        info = response.json()
+        metadata.update(
+            {
+                "title": clean_safe_string(info.get("title"), fallback=metadata["title"], max_length=180),
+                "channel": clean_safe_string(info.get("author_name"), max_length=140),
+                "thumbnail": info.get("thumbnail_url") or f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+                "url": canonical_youtube_url(video_id),
+                "webpage_url": canonical_youtube_url(video_id),
+                "video_id": video_id,
+            }
+        )
+        logger.info("YouTube DOCX: metadata fetched yes video_id=%s source=oembed", video_id)
+    except Exception:
+        metadata["thumbnail"] = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
+        logger.warning("YouTube DOCX: metadata fetched no video_id=%s; using safe fallback.", video_id, exc_info=True)
     return metadata
 
 
 def analyze_youtube_video(youtube_url):
     cleanup_old_docx_files()
+    logger.info("YouTube DOCX: analyze request received")
+    logger.info("YouTube DOCX: URL received %s", "yes" if youtube_url else "no")
     video_id = extract_youtube_video_id(youtube_url)
     if not video_id:
+        logger.info("YouTube DOCX: video ID extracted no")
         raise YouTubeDocxError("Invalid YouTube link.")
+    logger.info("YouTube DOCX: video ID extracted yes video_id=%s", video_id)
 
     canonical_url = canonical_youtube_url(video_id)
     metadata = fetch_youtube_metadata(canonical_url, video_id)
     has_transcript = True
     try:
-        fetch_youtube_transcript_with_fallback(video_id, canonical_url)
+        fetch_youtube_transcript_with_fallback(video_id, canonical_url, allow_audio=False)
+        logger.info("YouTube DOCX: transcript fetched yes video_id=%s", video_id)
     except YouTubeDocxError:
         has_transcript = False
+        logger.info("YouTube DOCX: transcript fetched no video_id=%s", video_id)
 
     return {
         "video_id": video_id,
@@ -282,6 +512,7 @@ def analyze_youtube_video(youtube_url):
         "thumbnail": metadata.get("thumbnail") or "",
         "youtube_url": canonical_url,
         "has_transcript": has_transcript,
+        "manual_transcript_required": not has_transcript,
     }
 
 
@@ -466,6 +697,190 @@ def _add_markdown_content(document, content):
     flush_table()
 
 
+def _as_clean_list(value):
+    if not value:
+        return []
+    if isinstance(value, list):
+        items = value
+    else:
+        items = re.split(r"[\r\n]+", str(value))
+    cleaned = []
+    for item in items:
+        if isinstance(item, dict):
+            text = item.get("text") or item.get("title") or item.get("value") or ""
+        else:
+            text = item
+        text = clean_docx_text(text)
+        if text:
+            cleaned.append(text)
+    return cleaned
+
+
+def _add_bullet_list(document, items):
+    for item in _as_clean_list(items):
+        _add_formatted_paragraph(document, item, style="List Bullet")
+
+
+def _add_numbered_list(document, items):
+    for item in _as_clean_list(items):
+        _add_formatted_paragraph(document, item, style="List Number")
+
+
+def _add_two_column_table(document, headers, rows):
+    cleaned_rows = []
+    for left, right in rows:
+        left_text = clean_docx_text(left)
+        right_text = clean_docx_text(right)
+        if left_text or right_text:
+            cleaned_rows.append((left_text, right_text))
+    if not cleaned_rows:
+        return
+    table = document.add_table(rows=1, cols=2)
+    table.style = "Table Grid"
+    for index, header in enumerate(headers):
+        cell = table.rows[0].cells[index]
+        cell.text = ""
+        run = cell.paragraphs[0].add_run(clean_docx_text(header))
+        run.bold = True
+    for left, right in cleaned_rows:
+        cells = table.add_row().cells
+        cells[0].text = left
+        cells[1].text = right
+    document.add_paragraph()
+
+
+def _add_structured_content(document, content):
+    if not isinstance(content, dict):
+        _add_markdown_content(document, content)
+        return
+
+    introduction = clean_docx_text(content.get("introduction", ""))
+    if introduction:
+        _add_heading(document, "Introduction", 1)
+        _add_formatted_paragraph(document, introduction)
+        document.add_page_break()
+
+    objectives = _as_clean_list(content.get("learning_objectives"))
+    if objectives:
+        _add_heading(document, "Learning Objectives", 1)
+        _add_bullet_list(document, objectives)
+        document.add_page_break()
+
+    sections = content.get("sections") if isinstance(content.get("sections"), list) else []
+    if sections:
+        _add_heading(document, "Main Study Notes", 1)
+        for index, section in enumerate(sections, 1):
+            if not isinstance(section, dict):
+                continue
+            heading = clean_docx_text(section.get("heading") or f"Lecture Section {index}")
+            _add_heading(document, heading, 2)
+            summary = clean_docx_text(section.get("summary", ""))
+            if summary:
+                _add_formatted_paragraph(document, summary)
+            key_points = _as_clean_list(section.get("key_points"))
+            if key_points:
+                _add_heading(document, "Key Points", 3)
+                _add_bullet_list(document, key_points)
+            examples = _as_clean_list(section.get("examples"))
+            if examples:
+                _add_heading(document, "Examples", 3)
+                _add_bullet_list(document, examples)
+        document.add_page_break()
+
+    key_concepts = content.get("key_concepts") if isinstance(content.get("key_concepts"), list) else []
+    if key_concepts:
+        _add_heading(document, "Key Concepts and Definitions", 1)
+        rows = []
+        for item in key_concepts:
+            if isinstance(item, dict):
+                rows.append((item.get("term", ""), item.get("definition", "")))
+        _add_two_column_table(document, ("Term", "Definition"), rows)
+        document.add_page_break()
+
+    takeaways = _as_clean_list(content.get("important_takeaways"))
+    if takeaways:
+        _add_heading(document, "Important Takeaways", 1)
+        _add_bullet_list(document, takeaways)
+        document.add_page_break()
+
+    summary = clean_docx_text(content.get("summary", ""))
+    if summary:
+        _add_heading(document, "Summary", 1)
+        _add_formatted_paragraph(document, summary)
+        document.add_page_break()
+
+    revision_questions = content.get("revision_questions") if isinstance(content.get("revision_questions"), list) else []
+    if revision_questions:
+        _add_heading(document, "Revision Questions", 1)
+        for index, item in enumerate(revision_questions, 1):
+            if isinstance(item, dict):
+                question = clean_docx_text(item.get("question", ""))
+                answer = clean_docx_text(item.get("answer", ""))
+            else:
+                question = clean_docx_text(item)
+                answer = ""
+            if question:
+                _add_formatted_paragraph(document, f"{index}. {question}")
+            if answer:
+                _add_formatted_paragraph(document, f"Answer: {answer}")
+        document.add_page_break()
+
+    mcqs = content.get("mcqs") if isinstance(content.get("mcqs"), list) else []
+    if mcqs:
+        _add_heading(document, "MCQs with Answers", 1)
+        for index, item in enumerate(mcqs, 1):
+            if not isinstance(item, dict):
+                continue
+            question = clean_docx_text(item.get("question", ""))
+            if question:
+                _add_formatted_paragraph(document, f"{index}. {question}")
+            _add_bullet_list(document, item.get("options"))
+            correct = clean_docx_text(item.get("correct_answer", ""))
+            explanation = clean_docx_text(item.get("explanation", ""))
+            if correct:
+                _add_formatted_paragraph(document, f"Correct answer: {correct}")
+            if explanation:
+                _add_formatted_paragraph(document, f"Explanation: {explanation}")
+        document.add_page_break()
+
+    glossary = content.get("glossary") if isinstance(content.get("glossary"), list) else []
+    if glossary:
+        _add_heading(document, "Glossary", 1)
+        rows = []
+        for item in glossary:
+            if isinstance(item, dict):
+                rows.append((item.get("term", ""), item.get("meaning", "")))
+        _add_two_column_table(document, ("Term", "Meaning"), rows)
+        document.add_page_break()
+
+    checklist = _as_clean_list(content.get("study_checklist"))
+    if checklist:
+        _add_heading(document, "Final Study Checklist", 1)
+        _add_bullet_list(document, checklist)
+
+
+def _structured_sections_count(content):
+    if not isinstance(content, dict):
+        return len(re.findall(r"^#{1,3}\s+", content or "", flags=re.MULTILINE)) or 12
+    count = 0
+    for key in (
+        "introduction",
+        "learning_objectives",
+        "sections",
+        "key_concepts",
+        "important_takeaways",
+        "summary",
+        "revision_questions",
+        "mcqs",
+        "glossary",
+        "study_checklist",
+    ):
+        value = content.get(key)
+        if value:
+            count += len(value) if key == "sections" and isinstance(value, list) else 1
+    return count or 12
+
+
 def _add_transcript_reference(document, transcript):
     from docx.shared import Pt
 
@@ -535,7 +950,8 @@ def build_docx_file(metadata, transcript, generated_content, target_pages, docum
 
     document_options = document_options or {}
     temp_id = uuid.uuid4().hex
-    title = metadata.get("title") or "YouTube Lecture"
+    content_title = generated_content.get("title") if isinstance(generated_content, dict) else ""
+    title = clean_docx_text(content_title) or metadata.get("title") or "YouTube Lecture"
     filename = f"studypilot_youtube_notes_{safe_filename(title)}.docx"
     path = ensure_temp_dir() / f"{temp_id}__{filename}"
 
@@ -585,7 +1001,7 @@ def build_docx_file(metadata, transcript, generated_content, target_pages, docum
         document.add_paragraph(item, style="List Bullet")
     document.add_page_break()
 
-    _add_markdown_content(document, generated_content)
+    _add_structured_content(document, generated_content)
 
     for paragraph in document.paragraphs:
         paragraph.paragraph_format.space_after = Pt(6)
@@ -624,34 +1040,53 @@ def normalize_document_options(options):
 
 def generate_youtube_docx(youtube_url, manual_transcript="", document_options=None):
     cleanup_old_docx_files()
+    logger.info("YouTube DOCX: generate request received")
+    logger.info("YouTube DOCX: URL received %s", "yes" if youtube_url else "no")
     video_id = extract_youtube_video_id(youtube_url)
     if not video_id:
+        logger.info("YouTube DOCX: video ID extracted no")
         raise YouTubeDocxError("Invalid YouTube link.")
+    logger.info("YouTube DOCX: video ID extracted yes video_id=%s", video_id)
 
     canonical_url = canonical_youtube_url(video_id)
     document_options = normalize_document_options(document_options)
     manual_text = clean_extracted_text(manual_transcript or "")
-    try:
-        transcript = fetch_youtube_transcript_with_fallback(video_id, canonical_url)
-    except YouTubeDocxError:
-        if manual_text:
-            transcript = _validate_transcript_text(manual_text)
-        else:
+    if manual_text:
+        transcript = _validate_transcript_text(manual_text)
+        logger.info("YouTube DOCX: manual transcript used yes video_id=%s", video_id)
+    else:
+        logger.info("YouTube DOCX: manual transcript used no video_id=%s", video_id)
+        try:
+            transcript = fetch_youtube_transcript_with_fallback(video_id, canonical_url)
+            logger.info("YouTube DOCX: transcript fetched yes video_id=%s", video_id)
+        except YouTubeDocxError:
+            logger.info("YouTube DOCX: transcript fetched no video_id=%s", video_id)
             raise
     metadata = fetch_youtube_metadata(canonical_url, video_id)
     target_pages = estimate_pages(transcript, metadata, detail_level=document_options["detail_level"])
     document_options["target_pages"] = target_pages
+    sections_count = 12
     try:
-        generated_content = generate_youtube_docx_content_with_deepseek(transcript, metadata, document_options)
-    except ImproperlyConfigured as exc:
-        raise YouTubeDocxError(str(exc)) from exc
+        generated_content = generate_structured_docx_content_with_deepseek(transcript, metadata, document_options)
+        sections_count = _structured_sections_count(generated_content)
+        logger.info("YouTube DOCX: structured content generated yes video_id=%s", video_id)
+    except ImproperlyConfigured:
+        logger.info("YouTube DOCX: structured content generated no video_id=%s reason=api_key_unavailable", video_id)
+        raise YouTubeDocxError("DeepSeek API key is not configured.") from None
     except AIServiceError as exc:
+        logger.warning("YouTube DOCX: structured content generated no video_id=%s reason=ai_generation_failed", video_id)
         raise YouTubeDocxError("Could not generate DOCX.") from exc
     transcript_short = len(transcript or "") < 3500
     document_options["short_video_note"] = transcript_short
 
-    file_info = build_docx_file(metadata, transcript, generated_content, target_pages, document_options=document_options)
-    sections_count = len(re.findall(r"^#{1,3}\s+", generated_content or "", flags=re.MULTILINE)) or 12
+    try:
+        file_info = build_docx_file(metadata, transcript, generated_content, target_pages, document_options=document_options)
+    except Exception:
+        logger.exception("YouTube DOCX: DOCX generated failed video_id=%s", video_id)
+        raise YouTubeDocxError("Could not generate DOCX.") from None
+    path_exists = bool(file_info.get("path") and file_info["path"].exists())
+    logger.info("YouTube DOCX: DOCX created %s video_id=%s", "yes" if path_exists else "no", video_id)
+    logger.info("YouTube DOCX: temp path exists %s video_id=%s", "yes" if path_exists else "no", video_id)
     return {
         "download_url": f"/api/youtube-docx/download/{file_info['temp_file_id']}/",
         "title": metadata.get("title") or "YouTube Lecture",

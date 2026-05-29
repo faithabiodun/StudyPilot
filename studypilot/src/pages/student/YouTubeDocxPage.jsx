@@ -18,9 +18,11 @@ import { analyzeYoutubeVideo, downloadYoutubeDocx, generateYoutubeDocx } from ".
 
 const loadingSteps = [
   "Fetching video details...",
-  "Extracting transcript...",
-  "Organizing lecture sections...",
-  "Creating study notes...",
+  "Checking transcript...",
+  "Trying YouTube subtitles...",
+  "Trying automatic captions...",
+  "Transcribing audio...",
+  "Creating study document...",
   "Formatting DOCX...",
   "Preparing download..."
 ];
@@ -98,12 +100,15 @@ export default function YouTubeDocxPage() {
     try {
       const response = await analyzeYoutubeVideo(trimmed);
       setVideo(response.data);
-      if (!response.data?.has_transcript) {
+      if (!response.data?.has_transcript || response.data?.manual_transcript_required) {
         setShowManualTranscript(true);
       }
     } catch (requestError) {
       setVideo(null);
       setError(requestError.message || "Could not fetch video details.");
+      if (requestError.payload?.manual_transcript_allowed || requestError.payload?.data?.manual_transcript_required) {
+        setShowManualTranscript(true);
+      }
     } finally {
       setAnalyzing(false);
     }
@@ -137,7 +142,12 @@ export default function YouTubeDocxPage() {
     } catch (requestError) {
       const message = requestError.message || "Could not generate DOCX.";
       setError(message);
-      if (message.toLowerCase().includes("transcript") || message.toLowerCase().includes("captions")) {
+      if (
+        requestError.payload?.manual_transcript_allowed ||
+        requestError.payload?.data?.manual_transcript_required ||
+        message.toLowerCase().includes("transcript") ||
+        message.toLowerCase().includes("captions")
+      ) {
         setShowManualTranscript(true);
       }
     } finally {
@@ -301,9 +311,10 @@ export default function YouTubeDocxPage() {
                 </button>
                 {showManualTranscript && (
                   <label className="mt-4 block">
-                    <span className="mb-2 block text-sm font-semibold text-pilot-ink">Manual transcript</span>
+                    <span className="mb-1 block text-sm font-semibold text-pilot-ink">Transcript could not be fetched automatically.</span>
+                    <span className="mb-2 block text-xs font-bold text-pilot-muted">Paste the transcript below to continue.</span>
                     <textarea
-                      placeholder="Paste YouTube transcript here..."
+                      placeholder="Paste transcript here..."
                       value={manualTranscript}
                       onChange={(event) => setManualTranscript(event.target.value)}
                       disabled={generating}
@@ -311,7 +322,7 @@ export default function YouTubeDocxPage() {
                       className="w-full resize-y rounded-xl border border-pilot-line bg-white px-4 py-3 text-sm leading-6 text-pilot-ink outline-none transition placeholder:text-pilot-muted/70 focus:border-pilot-blue focus:ring-4 focus:ring-pilot-blue/10"
                     />
                     <Button type="button" variant="secondary" icon={FileText} onClick={() => generate(true)} disabled={generating} className="mt-3">
-                      Generate DOCX from pasted transcript
+                      Generate DOCX from Transcript
                     </Button>
                   </label>
                 )}
@@ -330,6 +341,11 @@ export default function YouTubeDocxPage() {
               <Loader2 className="animate-spin" size={18} />
               {activeLoadingMessage}
             </div>
+            {loadingIndex >= 4 && !manualTranscript.trim() && (
+              <p className="mt-3 text-xs font-bold leading-5 text-pilot-muted">
+                This video may not have readable captions, so StudyPilot is transcribing the audio. This may take a few minutes.
+              </p>
+            )}
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">
               <div className="h-full rounded-full bg-pilot-blue transition-all" style={{ width: `${((loadingIndex + 1) / loadingSteps.length) * 100}%` }} />
             </div>

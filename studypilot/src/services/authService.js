@@ -23,9 +23,16 @@ export function persistAuthPayload(payload) {
 }
 
 export function clearAuthStorage() {
-  localStorage.removeItem("studypilot_access_token");
-  localStorage.removeItem("studypilot_refresh_token");
-  localStorage.removeItem("studypilot_user");
+  [
+    "studypilot_access_token",
+    "studypilot_refresh_token",
+    "studypilot_user",
+    "access_token",
+    "refresh_token",
+    "user",
+    "token",
+    "authToken"
+  ].forEach((key) => localStorage.removeItem(key));
 }
 
 export function getStoredUser() {
@@ -82,6 +89,19 @@ export async function updateProfile(payload) {
     refresh: localStorage.getItem("studypilot_refresh_token"),
     user: response.data
   }});
+}
+
+export async function deleteAccount() {
+  const response = await apiRequest("/auth/delete-account/", {
+    method: "DELETE"
+  });
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    // Email/password users may not have a Supabase session.
+  }
+  clearAuthStorage();
+  return response;
 }
 
 export async function signInWithGoogle() {

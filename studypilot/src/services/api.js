@@ -27,7 +27,10 @@ export async function apiRequest(path, options = {}, fallback) {
       const fieldErrors = payload?.errors || {};
       const firstFieldError = Object.values(fieldErrors).flat?.()[0] || fieldErrors.file || fieldErrors.non_field_errors;
       const detail = Array.isArray(firstFieldError) ? firstFieldError[0] : firstFieldError;
-      throw new Error(detail || payload?.detail || payload?.message || `Request failed with ${response.status}`);
+      const requestError = new Error(detail || payload?.detail || payload?.message || `Request failed with ${response.status}`);
+      requestError.payload = payload;
+      requestError.status = response.status;
+      throw requestError;
     }
 
     return await response.json();

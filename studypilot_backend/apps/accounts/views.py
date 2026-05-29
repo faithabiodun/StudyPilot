@@ -1,5 +1,7 @@
 from django.conf import settings
+from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 import requests
@@ -234,6 +236,41 @@ class ProfileView(APIView):
         if not request.data.get("current_courses"):
             record_activity(user, "profile_updated", "Updated Profile", "You updated your Academic Passport.")
         return success_response("Profile updated", UserSerializer(request.user).data)
+
+
+class DeleteAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        with transaction.atomic():
+            try:
+                Document = apps.get_model("documents", "Document")
+                for document in Document.objects.filter(user=user).exclude(file=""):
+                    if document.file:
+                        document.file.delete(save=False)
+            except LookupError:
+                pass
+
+            for app_label, model_name, field_name in (
+                ("advisor", "ChatSession", "user"),
+                ("dashboard", "ActivityLog", "user"),
+                ("dashboard", "LoginActivity", "user"),
+                ("dashboard", "UserSessionActivity", "user"),
+                ("documents", "DocumentChunk", "user"),
+                ("documents", "Document", "user"),
+                ("flashcards", "FlashcardDeck", "user"),
+                ("quizzes", "Quiz", "user"),
+                ("resources", "SavedResource", "user"),
+            ):
+                try:
+                    model = apps.get_model(app_label, model_name)
+                except LookupError:
+                    continue
+                model.objects.filter(**{field_name: user}).delete()
+
+            user.delete()
+        return success_response("Account deleted successfully.")
 
 
 class CompleteOnboardingView(APIView):

@@ -225,46 +225,105 @@ Selected PDF context:
     return generate_json_with_deepseek(prompt, system_prompt="You generate high-quality mixed academic quizzes from PDF study context.", temperature=0.25, max_output_tokens=9000)
 
 
-def generate_youtube_docx_content_with_deepseek(transcript, video_metadata, document_options=None):
+def generate_structured_docx_content_with_deepseek(transcript, video_metadata, document_options=None):
     document_options = document_options or {}
-    text = clean_extracted_text(transcript)[:30000]
+    cleaned_transcript = clean_extracted_text(transcript)
+    if len(cleaned_transcript) > 32000:
+        chunks = _chunk_text(cleaned_transcript, chunk_size=9000, overlap=400)[:6]
+        summaries = []
+        for index, chunk in enumerate(chunks, 1):
+            summary_prompt = f"""
+Summarize this YouTube lecture transcript chunk for later study-document generation.
+Keep important concepts, examples, definitions, processes, comparisons, and exam-worthy points.
+Do not add unrelated facts. Do not use markdown symbols.
+
+Chunk {index} of {len(chunks)}:
+{chunk}
+"""
+            summaries.append(
+                generate_text_with_deepseek(
+                    summary_prompt,
+                    system_prompt="You summarize lecture transcript chunks into clean academic notes.",
+                    temperature=0.2,
+                    max_output_tokens=1400,
+                )
+            )
+        text = clean_extracted_text("\n\n".join(summaries))[:32000]
+    else:
+        text = cleaned_transcript[:32000]
     prompt = f"""
-Create a polished academic study document from this YouTube lecture transcript.
-Use only the transcript and metadata. Do not invent unrelated facts. Do not copy the transcript word for word.
-Transform it into intelligent study notes with clear explanations.
+You are StudyPilot, an academic document generator for students.
+
+Create a structured study document from the YouTube transcript.
+
+Rules:
+- Do not copy the transcript word for word.
+- Do not add unrelated facts.
+- Do not output raw markdown tables.
+- Do not use markdown symbols like ##, **, ---, or pipe tables.
+- Return clean structured JSON only.
+- Make the document useful for revision, exam preparation, and understanding the lecture.
+- If the transcript is short, create the most useful document possible without fake filler.
+- If the transcript is long, summarize and organize it into multiple clear sections.
 
 Video title: {video_metadata.get("title") or "YouTube Lecture"}
 Channel: {video_metadata.get("channel") or "Unknown channel"}
 Detail level: {document_options.get("detail_level", "comprehensive")}
 Document style: {document_options.get("document_style", "study_guide")}
+Target pages: {document_options.get("target_pages", 30)}
 Custom instruction: {document_options.get("custom_instruction") or "None"}
 
-Required sections:
-# Introduction
-# Learning Objectives
-# Main Study Notes
-## Chapter-style sections
-# Timestamped Sections
-# Key Concepts
-# Definitions
-# Examples
-# Important Takeaways
-# Summary
-# Revision Questions
-# MCQs with Answers
-# Short Answer Questions
-# Glossary
-# Final Study Checklist
-
-Use markdown headings, bullets, numbered lists, and tables where useful.
+Return JSON exactly in this shape:
+{{
+  "title": "string",
+  "introduction": "string",
+  "learning_objectives": ["string"],
+  "sections": [
+    {{
+      "heading": "string",
+      "summary": "string",
+      "key_points": ["string"],
+      "examples": ["string"]
+    }}
+  ],
+  "key_concepts": [
+    {{
+      "term": "string",
+      "definition": "string"
+    }}
+  ],
+  "important_takeaways": ["string"],
+  "summary": "string",
+  "revision_questions": [
+    {{
+      "question": "string",
+      "answer": "string"
+    }}
+  ],
+  "mcqs": [
+    {{
+      "question": "string",
+      "options": ["string", "string", "string", "string"],
+      "correct_answer": "string",
+      "explanation": "string"
+    }}
+  ],
+  "glossary": [
+    {{
+      "term": "string",
+      "meaning": "string"
+    }}
+  ],
+  "study_checklist": ["string"]
+}}
 
 Transcript:
 {text}
 """
-    return generate_text_with_deepseek(
+    return generate_json_with_deepseek(
         prompt,
-        system_prompt="You create structured academic StudyPilot DOCX content from lecture transcripts.",
-        temperature=0.35,
+        system_prompt="You produce clean JSON for StudyPilot DOCX generation. Never include markdown or prose outside JSON.",
+        temperature=0.25,
         max_output_tokens=12000,
     )
 
@@ -278,5 +337,5 @@ __all__ = [
     "generate_pdf_flashcards_with_deepseek",
     "generate_pdf_mcqs_with_deepseek",
     "generate_pdf_mixed_quiz_with_deepseek",
-    "generate_youtube_docx_content_with_deepseek",
+    "generate_structured_docx_content_with_deepseek",
 ]

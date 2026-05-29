@@ -1,12 +1,20 @@
 from django.http import Http404, HttpResponse
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.dashboard.services import record_activity
 from apps.utils import error_response, success_response
 
-from .services import YouTubeDocxError, analyze_youtube_video, cleanup_old_docx_files, generate_youtube_docx, get_temp_docx_path
+from .services import (
+    TRANSCRIPT_UNAVAILABLE_MESSAGE,
+    YouTubeDocxError,
+    analyze_youtube_video,
+    cleanup_old_docx_files,
+    generate_youtube_docx,
+    get_temp_docx_path,
+)
 
 
 class YouTubeDocxAnalyzeView(APIView):
@@ -40,13 +48,25 @@ class YouTubeDocxGenerateView(APIView):
         try:
             data = generate_youtube_docx(youtube_url, manual_transcript=manual_transcript, document_options=document_options)
         except YouTubeDocxError as exc:
-            if str(exc) == "Transcript is not available for this YouTube video.":
-                return error_response(
-                    "Transcript is not available for this YouTube video.",
+            if str(exc) == TRANSCRIPT_UNAVAILABLE_MESSAGE:
+                return Response(
                     {
-                        "youtube_url": "This video does not provide readable captions. Try another video with captions or paste the transcript manually."
+                        "success": False,
+                        "message": TRANSCRIPT_UNAVAILABLE_MESSAGE,
+                        "errors": {
+                            "youtube_url": "This video does not expose readable captions. Try another video with captions or paste the transcript manually."
+                        },
+                        "data": {
+                            "manual_transcript_required": True,
+                        },
                     },
-                    status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if str(exc) == "DeepSeek API key is not configured.":
+                return error_response(
+                    "DeepSeek API key is not configured.",
+                    {"youtube_url": "StudyPilot could not create the study document because the AI key is not configured."},
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
                 )
             return error_response(str(exc), {"youtube_url": str(exc)}, status.HTTP_400_BAD_REQUEST)
         record_activity(
