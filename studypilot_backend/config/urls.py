@@ -28,6 +28,7 @@ class HealthCheckView(APIView):
             {
                 "success": True,
                 "message": "StudyPilot backend is running",
+                "api_docs": "/api/docs/",
             }
         )
 

@@ -49,8 +49,9 @@ DATABASE_USER=postgres
 DATABASE_PASSWORD=your_postgres_password
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
-ALLOWED_HOSTS=localhost,127.0.0.1
-CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+ALLOWED_HOSTS=studypilot-r710.onrender.com,localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=https://studypilot-sigma.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+CSRF_TRUSTED_ORIGINS=https://studypilot-sigma.vercel.app,https://studypilot-r710.onrender.com
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-supabase-anon-key
@@ -262,9 +263,9 @@ SECRET_KEY=your_production_secret_key
 DEBUG=False
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require
 DATABASE_CONN_MAX_AGE=0
-ALLOWED_HOSTS=.onrender.com,your-backend.onrender.com
-CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://your-frontend.netlify.app,https://your-frontend.vercel.app
-CSRF_TRUSTED_ORIGINS=https://your-backend.onrender.com,https://your-frontend.netlify.app,https://your-frontend.vercel.app
+ALLOWED_HOSTS=studypilot-r710.onrender.com,localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=https://studypilot-sigma.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+CSRF_TRUSTED_ORIGINS=https://studypilot-sigma.vercel.app,https://studypilot-r710.onrender.com
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
 GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
@@ -301,7 +302,7 @@ Temporary file behavior:
 After deployment, test:
 
 ```powershell
-curl https://your-backend.onrender.com/api/health/
+curl https://studypilot-r710.onrender.com/api/health/
 ```
 
 Expected response:
@@ -450,6 +451,12 @@ Set your React frontend API base URL with a Vite environment variable:
 
 ```env
 VITE_API_BASE_URL=http://127.0.0.1:8000/api
+```
+
+For production, the frontend should use the Render backend:
+
+```env
+VITE_API_BASE_URL=https://studypilot-r710.onrender.com/api
 ```
 
 Send the JWT access token with protected requests:

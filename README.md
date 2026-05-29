@@ -25,7 +25,7 @@ studypilot_backend/
 
 ## Security
 
-Never commit real secrets. Keep real environment files local or in Vercel project environment variables.
+Never commit real secrets. Keep real environment files local or in your deployment provider environment variables.
 
 Do not commit:
 
@@ -51,15 +51,15 @@ npm run dev
 Frontend environment variables:
 
 ```env
-VITE_API_BASE_URL=http://127.0.0.1:8000/api
+VITE_API_BASE_URL=https://studypilot-r710.onrender.com/api
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-For Vercel, set `VITE_API_BASE_URL` to the deployed backend API URL, for example:
+For local development, point the frontend to your local Django backend:
 
 ```env
-VITE_API_BASE_URL=https://studypilot-backend.vercel.app/api
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
 ```
 
 ## Backend Setup
@@ -78,9 +78,9 @@ Backend environment variables:
 ```env
 SECRET_KEY=change-me
 DEBUG=True
-ALLOWED_HOSTS=localhost,127.0.0.1,.vercel.app
-CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
-CSRF_TRUSTED_ORIGINS=
+ALLOWED_HOSTS=studypilot-r710.onrender.com,localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=https://studypilot-sigma.vercel.app,http://localhost:5173,http://127.0.0.1:5173
+CSRF_TRUSTED_ORIGINS=https://studypilot-sigma.vercel.app,https://studypilot-r710.onrender.com
 DATABASE_URL=
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -152,9 +152,10 @@ If one external API is unavailable, StudyPilot should still return resources fro
 
 Uploaded PDFs are temporary. The backend extracts text, deletes the physical PDF, and stores only document metadata and extracted text.
 
-Generated YouTube DOCX files are temporary. They are stored only long enough for download and should be cleaned after download or expiry. On Vercel, use a temporary directory such as:
+Generated YouTube DOCX files are temporary. They are stored only long enough for download and should be cleaned after download or expiry. On Render, use temporary directories such as:
 
 ```env
+YOUTUBE_AUDIO_TEMP_DIR=/tmp/youtube_audio
 YOUTUBE_DOCX_TEMP_DIR=/tmp/youtube_docx
 ```
 
@@ -191,7 +192,7 @@ Open:
    - Build command: `npm run build`
    - Output directory: `dist`
 4. Add frontend environment variables:
-   - `VITE_API_BASE_URL=https://your-backend.vercel.app/api`
+   - `VITE_API_BASE_URL=https://studypilot-r710.onrender.com/api`
    - `VITE_SUPABASE_URL=...`
    - `VITE_SUPABASE_ANON_KEY=...`
 5. Deploy.
@@ -215,17 +216,20 @@ git push -u origin main
 
 Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `temp`, `venv`, logs, and `.vercel` are ignored.
 
-## Deploy Backend to Vercel
+## Deploy Backend to Render
 
-1. Import the repository in Vercel.
-2. Set the backend project root to `studypilot_backend`.
-3. Vercel uses `studypilot_backend/vercel.json` and `api/index.py` for the Django WSGI entrypoint.
+1. Create a Render Web Service from this repository.
+2. Set the backend root directory to `studypilot_backend`.
+3. Use:
+   - Build command: `pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate`
+   - Start command: `gunicorn config.wsgi:application`
+   - Health check path: `/api/health/`
 4. Add backend environment variables:
    - `SECRET_KEY`
    - `DEBUG=False`
-   - `ALLOWED_HOSTS=localhost,127.0.0.1,.vercel.app,your-backend.vercel.app`
-   - `CORS_ALLOWED_ORIGINS=https://your-frontend.vercel.app`
-   - `CSRF_TRUSTED_ORIGINS=https://your-backend.vercel.app,https://your-frontend.vercel.app`
+   - `ALLOWED_HOSTS=studypilot-r710.onrender.com,localhost,127.0.0.1`
+   - `CORS_ALLOWED_ORIGINS=https://studypilot-sigma.vercel.app,http://localhost:5173,http://127.0.0.1:5173`
+   - `CSRF_TRUSTED_ORIGINS=https://studypilot-sigma.vercel.app,https://studypilot-r710.onrender.com`
    - `DATABASE_URL`
    - `SUPABASE_URL`
    - `SUPABASE_ANON_KEY`
@@ -235,15 +239,18 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
    - `YOUTUBE_API_KEY`
    - `GOOGLE_BOOKS_API_KEY`
    - `OPENALEX_EMAIL`
+   - `MEDIA_ROOT=/tmp/studypilot_media`
+   - `FILE_UPLOAD_TEMP_DIR=/tmp/studypilot_uploads`
+   - `YOUTUBE_AUDIO_TEMP_DIR=/tmp/youtube_audio`
    - `YOUTUBE_DOCX_TEMP_DIR=/tmp/youtube_docx`
    - `YOUTUBE_DOCX_EXPIRY_MINUTES=60`
-5. Run migrations against Supabase PostgreSQL from a safe local machine or CI job before using the live app.
+5. Use the Supabase PostgreSQL pooled `DATABASE_URL` with `sslmode=require`.
 
 ## Test Live Deployment
 
-1. Open `https://your-backend.vercel.app/api/health/`.
-2. Open `https://your-backend.vercel.app/api/docs/`.
-3. Open the frontend Vercel URL.
+1. Open `https://studypilot-r710.onrender.com/api/health/`.
+2. Open `https://studypilot-r710.onrender.com/api/docs/`.
+3. Open `https://studypilot-sigma.vercel.app`.
 4. Register or sign in.
 5. Test Google OAuth callback.
 6. Upload a PDF and confirm the PDF file is not retained.
