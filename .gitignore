@@ -12,6 +12,7 @@ dist/
 build/
 media/
 temp/
+staticfiles/
 *.sqlite3
 .DS_Store
 .vercel/

@@ -63,7 +63,10 @@ YOUTUBE_API_KEY=your_youtube_api_key_here
 GOOGLE_BOOKS_API_KEY=your_google_books_api_key_here
 OPENALEX_EMAIL=your_email_optional
 YOUTUBE_DOCX_TEMP_DIR=temp/youtube_docx
+YOUTUBE_AUDIO_TEMP_DIR=temp/youtube_audio
 YOUTUBE_DOCX_EXPIRY_MINUTES=60
+ENABLE_AUDIO_TRANSCRIPTION=True
+WHISPER_MODEL_SIZE=base
 JWT_ACCESS_TOKEN_LIFETIME_MINUTES=60
 JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
 ```
@@ -233,6 +236,82 @@ Supabase is used only for Google OAuth and hosted PostgreSQL. Do not expose `DAT
 
 - Schema: `GET /api/schema/`
 - Swagger UI: `GET /api/docs/`
+
+## Render Deployment
+
+Deploy `studypilot_backend/` as a Render Web Service.
+
+Recommended Render settings:
+
+- Runtime: Python
+- Root directory: `studypilot_backend`
+- Build command: `pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate`
+- Start command: `gunicorn config.wsgi:application`
+- Health check path: `/api/health/`
+
+The included `Procfile` also defines:
+
+```text
+web: gunicorn config.wsgi:application
+```
+
+Set these Render environment variables:
+
+```env
+SECRET_KEY=your_production_secret_key
+DEBUG=False
+DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require
+DATABASE_CONN_MAX_AGE=0
+ALLOWED_HOSTS=.onrender.com,your-backend.onrender.com
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,https://your-frontend.netlify.app,https://your-frontend.vercel.app
+CSRF_TRUSTED_ORIGINS=https://your-backend.onrender.com,https://your-frontend.netlify.app,https://your-frontend.vercel.app
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+DEEPSEEK_TIMEOUT_SECONDS=45
+MAX_DEEPSEEK_CONTEXT_CHARS=20000
+MAX_PDF_PAGES=50
+MAX_EXTRACTED_TEXT_CHARS=80000
+MAX_UPLOAD_SIZE=12582912
+MEDIA_ROOT=/tmp/studypilot_media
+FILE_UPLOAD_TEMP_DIR=/tmp/studypilot_uploads
+YOUTUBE_API_KEY=your_youtube_api_key_here
+GOOGLE_BOOKS_API_KEY=your_google_books_api_key_here
+OPENALEX_EMAIL=your_email_optional
+YOUTUBE_AUDIO_TEMP_DIR=/tmp/youtube_audio
+YOUTUBE_DOCX_TEMP_DIR=/tmp/youtube_docx
+YOUTUBE_DOCX_EXPIRY_MINUTES=60
+ENABLE_AUDIO_TRANSCRIPTION=True
+WHISPER_MODEL_SIZE=base
+JWT_ACCESS_TOKEN_LIFETIME_MINUTES=60
+JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
+```
+
+Use the Supabase pooled PostgreSQL `DATABASE_URL` and keep `sslmode=require`.
+
+Temporary file behavior:
+
+- Uploaded PDFs are written to `MEDIA_ROOT`, extracted, then deleted.
+- YouTube audio and DOCX files use `/tmp/...` paths and are temporary.
+- Do not use Supabase Storage for uploaded PDFs or generated DOCX files.
+
+After deployment, test:
+
+```powershell
+curl https://your-backend.onrender.com/api/health/
+```
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "message": "StudyPilot backend is running"
+}
+```
 
 ## DeepSeek AI Features
 
