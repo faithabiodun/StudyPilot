@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { supabase } from "../../lib/supabase";
+import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import { checkBackendHealth, exchangeSupabaseGoogleToken } from "../../services/authService";
 
 export default function AuthCallbackPage() {
@@ -16,6 +16,9 @@ export default function AuthCallbackPage() {
 
     async function finishLogin() {
       try {
+        if (!isSupabaseConfigured || !supabase) {
+          throw new Error("Supabase Auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+        }
         const { data, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
         if (import.meta.env.DEV) {

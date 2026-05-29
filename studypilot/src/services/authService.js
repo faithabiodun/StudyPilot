@@ -96,7 +96,7 @@ export async function deleteAccount() {
     method: "DELETE"
   });
   try {
-    await supabase.auth.signOut();
+    await supabase?.auth.signOut();
   } catch {
     // Email/password users may not have a Supabase session.
   }
@@ -105,7 +105,7 @@ export async function deleteAccount() {
 }
 
 export async function signInWithGoogle() {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseConfigured || !supabase) {
     throw new Error("Supabase Auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
   }
   const { error } = await supabase.auth.signInWithOAuth({
@@ -191,7 +191,7 @@ export async function signOutEverywhere() {
     console.error("StudyPilot cleanup failed before logout:", error);
   }
   try {
-    await supabase.auth.signOut();
+    await supabase?.auth.signOut();
   } catch {
     // Normal email/password users may not have a Supabase session.
   }
