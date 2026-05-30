@@ -26,6 +26,8 @@ SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-dev-key-change-me")
 RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
 DEFAULT_DEBUG = "False" if RENDER_EXTERNAL_HOSTNAME else "True"
 DEBUG = os.getenv("DEBUG", DEFAULT_DEBUG).lower() == "true"
+if RENDER_EXTERNAL_HOSTNAME and os.getenv("ALLOW_RENDER_DEBUG", "False").lower() != "true":
+    DEBUG = False
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,.onrender.com")
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
