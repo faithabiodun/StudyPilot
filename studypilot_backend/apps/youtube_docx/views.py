@@ -48,13 +48,14 @@ class YouTubeDocxGenerateView(APIView):
         try:
             data = generate_youtube_docx(youtube_url, manual_transcript=manual_transcript, document_options=document_options)
         except YouTubeDocxError as exc:
-            if str(exc) == TRANSCRIPT_UNAVAILABLE_MESSAGE:
+            if str(exc) in {TRANSCRIPT_UNAVAILABLE_MESSAGE, "Audio transcription failed. Paste transcript manually to continue."}:
+                message = str(exc)
                 return Response(
                     {
                         "success": False,
-                        "message": TRANSCRIPT_UNAVAILABLE_MESSAGE,
+                        "message": message,
                         "errors": {
-                            "youtube_url": "This video does not expose readable captions. Try another video with captions or paste the transcript manually."
+                            "youtube_url": "Transcript could not be fetched automatically. Paste the transcript manually to continue."
                         },
                         "data": {
                             "manual_transcript_required": True,

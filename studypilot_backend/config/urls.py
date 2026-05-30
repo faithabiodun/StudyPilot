@@ -54,6 +54,7 @@ class DeploymentHealthView(APIView):
                 "debug": settings.DEBUG,
                 "database": "connected" if database_connected else "unavailable",
                 "deepseek_configured": bool(settings.DEEPSEEK_API_KEY),
+                "audio_transcription_enabled": settings.ENABLE_AUDIO_TRANSCRIPTION,
                 "youtube_docx_temp_dir": str(settings.YOUTUBE_DOCX_TEMP_DIR),
                 "pdf_temp_dir": str(settings.PDF_TEMP_DIR),
                 "upload_limit_mb": settings.MAX_UPLOAD_SIZE // (1024 * 1024),

@@ -18,10 +18,10 @@ import { analyzeYoutubeVideo, downloadYoutubeDocx, generateYoutubeDocx } from ".
 
 const loadingSteps = [
   "Fetching video details...",
-  "Checking transcript...",
-  "Trying YouTube subtitles...",
+  "Checking captions...",
+  "Trying subtitles...",
   "Trying automatic captions...",
-  "Transcribing audio...",
+  "No captions found, transcribing audio...",
   "Creating study document...",
   "Formatting DOCX...",
   "Preparing download..."
@@ -306,7 +306,7 @@ export default function YouTubeDocxPage() {
                   onClick={() => setShowManualTranscript((current) => !current)}
                   className="flex w-full items-center justify-between text-left text-sm font-black text-pilot-ink transition hover:text-pilot-blue"
                 >
-                  <span>Can't fetch transcript? Paste transcript manually.</span>
+                  <span>Transcript could not be fetched automatically? Paste transcript manually.</span>
                   <span className="text-xs text-pilot-blue">{showManualTranscript ? "Hide" : "Add transcript"}</span>
                 </button>
                 {showManualTranscript && (

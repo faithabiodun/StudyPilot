@@ -222,7 +222,7 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
 2. Set the backend root directory to `studypilot_backend`.
 3. Use:
    - Build command: `pip install -r requirements.txt`
-   - Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 180 --workers 1`
+   - Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 300 --workers 1`
    - Health check path: `/api/health/`
 4. Add backend environment variables:
    - `SECRET_KEY`
@@ -248,8 +248,11 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
    - `YOUTUBE_AUDIO_TEMP_DIR=/tmp/youtube_audio`
    - `YOUTUBE_DOCX_TEMP_DIR=/tmp/youtube_docx`
    - `YOUTUBE_DOCX_EXPIRY_MINUTES=60`
-   - `ENABLE_AUDIO_TRANSCRIPTION=False`
+   - `ENABLE_AUDIO_TRANSCRIPTION=True`
+   - `WHISPER_MODEL_SIZE=base`
 5. Use the Supabase PostgreSQL pooled `DATABASE_URL` with `sslmode=require`.
+
+If Render becomes too slow or runs out of memory during audio transcription, set `ENABLE_AUDIO_TRANSCRIPTION=False`; videos without captions will then use the manual transcript fallback.
 
 ## Test Live Deployment
 

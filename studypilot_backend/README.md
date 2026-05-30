@@ -247,13 +247,13 @@ Recommended Render settings:
 - Runtime: Python
 - Root directory: `studypilot_backend`
 - Build command: `pip install -r requirements.txt`
-- Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 180 --workers 1`
+- Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 300 --workers 1`
 - Health check path: `/api/health/`
 
 The included `Procfile` also defines:
 
 ```text
-web: python manage.py migrate && gunicorn config.wsgi:application --timeout 180 --workers 1
+web: python manage.py migrate && gunicorn config.wsgi:application --timeout 300 --workers 1
 ```
 
 Set these Render environment variables:
@@ -289,11 +289,13 @@ OPENALEX_EMAIL=your_email_optional
 YOUTUBE_AUDIO_TEMP_DIR=/tmp/youtube_audio
 YOUTUBE_DOCX_TEMP_DIR=/tmp/youtube_docx
 YOUTUBE_DOCX_EXPIRY_MINUTES=60
-ENABLE_AUDIO_TRANSCRIPTION=False
+ENABLE_AUDIO_TRANSCRIPTION=True
 WHISPER_MODEL_SIZE=base
 JWT_ACCESS_TOKEN_LIFETIME_MINUTES=60
 JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
 ```
+
+If Render free tier memory or request time becomes a problem, set `ENABLE_AUDIO_TRANSCRIPTION=False`; YouTube videos without captions will still offer manual transcript fallback.
 
 Use the Supabase pooled PostgreSQL `DATABASE_URL` and keep `sslmode=require`.
 

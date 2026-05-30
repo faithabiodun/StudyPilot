@@ -320,8 +320,6 @@ def _fetch_ytdlp_subtitle_text(youtube_url):
             return text
         except Exception:
             continue
-    # Future fallback: if captions are unavailable, a permitted local audio
-    # transcription path such as faster-whisper can be added here.
     raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
 
 
@@ -333,7 +331,7 @@ def _download_youtube_audio(youtube_url, video_id):
     options = {
         "quiet": True,
         "no_warnings": True,
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
         "outtmpl": output_template,
         "noplaylist": True,
         "socket_timeout": 20,
@@ -379,6 +377,7 @@ def _fetch_audio_transcript_text(youtube_url, video_id):
     audio_path = None
     try:
         audio_path = _download_youtube_audio(youtube_url, video_id)
+        logger.info("YouTube DOCX: temporary audio downloaded yes video_id=%s", video_id)
         transcript = _transcribe_audio_with_faster_whisper(audio_path)
         logger.info("YouTube DOCX: transcript found yes source=audio_transcription")
         return transcript
@@ -413,7 +412,10 @@ def fetch_youtube_transcript_with_fallback(video_id, youtube_url, allow_audio=Tr
         raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
     try:
         return _fetch_audio_transcript_text(youtube_url, video_id)
-    except YouTubeDocxError:
+    except YouTubeDocxError as exc:
+        if settings.ENABLE_AUDIO_TRANSCRIPTION:
+            logger.info("YouTube DOCX: audio transcription failed; manual transcript required.")
+            raise YouTubeDocxError("Audio transcription failed. Paste transcript manually to continue.") from exc
         raise
     except Exception as exc:
         raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE) from exc
