@@ -309,6 +309,7 @@ After deployment, test:
 
 ```powershell
 curl https://studypilot-r710.onrender.com/api/health/
+curl https://studypilot-r710.onrender.com/api/youtube-docx/diagnostics/
 ```
 
 Expected response:

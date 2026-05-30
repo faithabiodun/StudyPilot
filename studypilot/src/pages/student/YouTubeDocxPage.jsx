@@ -21,7 +21,7 @@ const loadingSteps = [
   "Checking captions...",
   "Trying subtitles...",
   "Trying automatic captions...",
-  "No captions found, transcribing audio...",
+  "No captions found. Transcribing audio...",
   "Creating study document...",
   "Formatting DOCX...",
   "Preparing download..."
@@ -100,9 +100,7 @@ export default function YouTubeDocxPage() {
     try {
       const response = await analyzeYoutubeVideo(trimmed);
       setVideo(response.data);
-      if (!response.data?.has_transcript || response.data?.manual_transcript_required) {
-        setShowManualTranscript(true);
-      }
+      setShowManualTranscript(false);
     } catch (requestError) {
       setVideo(null);
       setError(requestError.message || "Could not fetch video details.");
@@ -343,7 +341,7 @@ export default function YouTubeDocxPage() {
             </div>
             {loadingIndex >= 4 && !manualTranscript.trim() && (
               <p className="mt-3 text-xs font-bold leading-5 text-pilot-muted">
-                This video may not have readable captions, so StudyPilot is transcribing the audio. This may take a few minutes.
+                This video has no readable captions, so StudyPilot is transcribing the audio. This may take a few minutes.
               </p>
             )}
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white">

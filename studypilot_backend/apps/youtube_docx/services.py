@@ -269,14 +269,17 @@ def _clean_subtitle_text(raw_text):
     return clean_extracted_text(text)
 
 
-def _subtitle_candidates(info):
+def _subtitle_candidates(info, include_automatic=False):
     requested = info.get("requested_subtitles") or {}
     subtitles = info.get("subtitles") or {}
     automatic = info.get("automatic_captions") or {}
     preferred = ["en", "en-US", "en-GB"]
     ordered = []
     seen = set()
-    for source in (requested, subtitles, automatic):
+    sources = [requested, subtitles]
+    if include_automatic:
+        sources.append(automatic)
+    for source in sources:
         for language in preferred:
             for entry in source.get(language, []) or []:
                 key = entry.get("url") or repr(entry)
@@ -292,10 +295,11 @@ def _subtitle_candidates(info):
     return ordered
 
 
-def _fetch_ytdlp_subtitle_text(youtube_url):
+def _fetch_ytdlp_subtitle_text(youtube_url, include_automatic=False):
     from yt_dlp import YoutubeDL
 
-    logger.info("YouTube DOCX: yt-dlp subtitle fallback tried")
+    source_label = "automatic captions" if include_automatic else "subtitles"
+    logger.info("YouTube DOCX: trying yt-dlp %s", source_label)
     options = {
         "quiet": True,
         "no_warnings": True,
@@ -308,7 +312,7 @@ def _fetch_ytdlp_subtitle_text(youtube_url):
     with YoutubeDL(options) as ydl:
         info = ydl.extract_info(youtube_url, download=False)
 
-    for entry in _subtitle_candidates(info):
+    for entry in _subtitle_candidates(info, include_automatic=include_automatic):
         subtitle_url = entry.get("url")
         if not subtitle_url:
             continue
@@ -316,16 +320,19 @@ def _fetch_ytdlp_subtitle_text(youtube_url):
             response = requests.get(subtitle_url, timeout=12)
             response.raise_for_status()
             text = _validate_transcript_text(_clean_subtitle_text(response.text))
-            logger.info("YouTube DOCX: transcript found yes source=yt_dlp_subtitles")
+            logger.info("YouTube DOCX: transcript found yes source=yt_dlp_%s", "automatic_captions" if include_automatic else "subtitles")
             return text
-        except Exception:
+        except Exception as exc:
+            logger.info("YouTube DOCX: yt-dlp %s candidate failed reason=%s", source_label, exc.__class__.__name__)
             continue
+    logger.info("YouTube DOCX: yt-dlp %s failed reason=no_readable_caption_text", source_label)
     raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
 
 
 def _download_youtube_audio(youtube_url, video_id):
     from yt_dlp import YoutubeDL
 
+    logger.info("YouTube DOCX: trying audio transcription download video_id=%s", video_id)
     audio_dir = ensure_audio_temp_dir()
     output_template = str(audio_dir / f"{video_id}_{uuid.uuid4().hex}.%(ext)s")
     options = {
@@ -351,29 +358,46 @@ def _download_youtube_audio(youtube_url, video_id):
     raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
 
 
+def transcribe_youtube_audio(youtube_url):
+    video_id = extract_youtube_video_id(youtube_url)
+    if not video_id:
+        raise YouTubeDocxError("Invalid YouTube link.")
+    audio_path = None
+    try:
+        audio_path = _download_youtube_audio(canonical_youtube_url(video_id), video_id)
+        return _transcribe_audio_with_faster_whisper(audio_path)
+    finally:
+        if audio_path:
+            _delete_temp_path(audio_path)
+
+
 def _transcribe_audio_with_faster_whisper(audio_path):
     try:
         from faster_whisper import WhisperModel
     except Exception as exc:
-        logger.info("YouTube DOCX: audio transcription unavailable missing_dependency")
+        logger.info("YouTube DOCX: audio transcription unavailable reason=missing_faster_whisper")
         raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE) from exc
 
     try:
+        logger.info("YouTube DOCX: Whisper transcription started")
         model = WhisperModel(settings.WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
         segments, _ = model.transcribe(str(audio_path), beam_size=3, vad_filter=True)
         text = " ".join(segment.text.strip() for segment in segments if getattr(segment, "text", "").strip())
-        return _validate_transcript_text(text)
+        transcript = _validate_transcript_text(text)
+        logger.info("YouTube DOCX: Whisper transcription completed transcript_length=%s", len(transcript))
+        return transcript
     except Exception as exc:
-        logger.info("YouTube DOCX: audio transcription failed")
+        logger.info("YouTube DOCX: audio transcription failed reason=%s", exc.__class__.__name__)
         raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE) from exc
 
 
 def _fetch_audio_transcript_text(youtube_url, video_id):
     if not settings.ENABLE_AUDIO_TRANSCRIPTION:
-        logger.info("YouTube DOCX: audio transcription skipped disabled")
+        logger.info("YouTube DOCX: ENABLE_AUDIO_TRANSCRIPTION is false")
         raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
 
-    logger.info("YouTube DOCX: audio transcription fallback tried video_id=%s", video_id)
+    logger.info("YouTube DOCX: ENABLE_AUDIO_TRANSCRIPTION is true")
+    logger.info("YouTube DOCX: trying audio transcription video_id=%s", video_id)
     audio_path = None
     try:
         audio_path = _download_youtube_audio(youtube_url, video_id)
@@ -400,14 +424,20 @@ def fetch_youtube_transcript_with_fallback(video_id, youtube_url, allow_audio=Tr
         text = fetch_youtube_transcript(video_id)
         logger.info("YouTube DOCX: transcript found yes source=youtube_transcript_api")
         return text
-    except YouTubeDocxError:
-        logger.info("youtube-transcript-api did not find a transcript; trying yt-dlp subtitles.")
+    except YouTubeDocxError as exc:
+        logger.info("YouTube DOCX: youtube-transcript-api failed reason=%s", exc.__class__.__name__)
     try:
-        return _fetch_ytdlp_subtitle_text(youtube_url)
-    except YouTubeDocxError:
-        logger.info("yt-dlp subtitles did not find a transcript; trying audio transcription.")
+        return _fetch_ytdlp_subtitle_text(youtube_url, include_automatic=False)
+    except YouTubeDocxError as exc:
+        logger.info("YouTube DOCX: yt-dlp subtitles failed reason=%s", exc.__class__.__name__)
     except Exception as exc:
-        logger.info("yt-dlp subtitles failed unexpectedly; trying audio transcription.")
+        logger.info("YouTube DOCX: yt-dlp subtitles failed reason=%s", exc.__class__.__name__)
+    try:
+        return _fetch_ytdlp_subtitle_text(youtube_url, include_automatic=True)
+    except YouTubeDocxError as exc:
+        logger.info("YouTube DOCX: yt-dlp automatic captions failed reason=%s", exc.__class__.__name__)
+    except Exception as exc:
+        logger.info("YouTube DOCX: yt-dlp automatic captions failed reason=%s", exc.__class__.__name__)
     if not allow_audio:
         raise YouTubeDocxError(TRANSCRIPT_UNAVAILABLE_MESSAGE)
     try:
@@ -1042,7 +1072,7 @@ def normalize_document_options(options):
 
 def generate_youtube_docx(youtube_url, manual_transcript="", document_options=None):
     cleanup_old_docx_files()
-    logger.info("YouTube DOCX: generate request received")
+    logger.info("YouTube DOCX generate called")
     logger.info("YouTube DOCX: URL received %s", "yes" if youtube_url else "no")
     video_id = extract_youtube_video_id(youtube_url)
     if not video_id:
@@ -1069,6 +1099,7 @@ def generate_youtube_docx(youtube_url, manual_transcript="", document_options=No
     document_options["target_pages"] = target_pages
     sections_count = 12
     try:
+        logger.info("YouTube DOCX: sending transcript to DeepSeek transcript_length=%s", len(transcript or ""))
         generated_content = generate_structured_docx_content_with_deepseek(transcript, metadata, document_options)
         sections_count = _structured_sections_count(generated_content)
         logger.info("YouTube DOCX: structured content generated yes video_id=%s", video_id)

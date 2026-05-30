@@ -258,15 +258,16 @@ If Render becomes too slow or runs out of memory during audio transcription, set
 
 1. Open `https://studypilot-r710.onrender.com/api/health/`.
 2. Open `https://studypilot-r710.onrender.com/api/health/deployment/`.
-3. Open `https://studypilot-r710.onrender.com/api/docs/`.
-4. Open `https://nowstudypilot.onrender.com`.
-5. Register or sign in.
-6. Test Google OAuth callback.
-7. Upload a PDF under the configured upload limit and confirm the PDF file is not retained.
-8. Generate PDF study outputs.
-9. Search Resource Hub and open a result.
-10. Ask AI Advisor a direct question.
-11. Generate and download a YouTube DOCX, then confirm it is temporary.
+3. Open `https://studypilot-r710.onrender.com/api/youtube-docx/diagnostics/`.
+4. Open `https://studypilot-r710.onrender.com/api/docs/`.
+5. Open `https://nowstudypilot.onrender.com`.
+6. Register or sign in.
+7. Test Google OAuth callback.
+8. Upload a PDF under the configured upload limit and confirm the PDF file is not retained.
+9. Generate PDF study outputs.
+10. Search Resource Hub and open a result.
+11. Ask AI Advisor a direct question.
+12. Generate and download a YouTube DOCX, then confirm it is temporary.
 11. Open Dashboard and Profile.
 
 ## Build Checks

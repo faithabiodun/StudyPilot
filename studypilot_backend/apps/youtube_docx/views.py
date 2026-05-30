@@ -1,5 +1,9 @@
+import importlib.util
+
+from django.conf import settings
 from django.http import Http404, HttpResponse
 from rest_framework import status
+from rest_framework.permissions import AllowAny
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -98,3 +102,22 @@ class YouTubeDocxDownloadView(APIView):
         )
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+
+class YouTubeDocxDiagnosticsView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return success_response(
+            "YouTube DOCX diagnostics fetched",
+            {
+                "audio_transcription_enabled": settings.ENABLE_AUDIO_TRANSCRIPTION,
+                "whisper_model_size": settings.WHISPER_MODEL_SIZE,
+                "audio_temp_dir": str(settings.YOUTUBE_AUDIO_TEMP_DIR),
+                "docx_temp_dir": str(settings.YOUTUBE_DOCX_TEMP_DIR),
+                "deepseek_configured": bool(settings.DEEPSEEK_API_KEY),
+                "yt_dlp_available": importlib.util.find_spec("yt_dlp") is not None,
+                "faster_whisper_available": importlib.util.find_spec("faster_whisper") is not None,
+            },
+        )
