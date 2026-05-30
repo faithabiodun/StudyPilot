@@ -61,6 +61,8 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 DEEPSEEK_TIMEOUT_SECONDS=45
 MAX_DEEPSEEK_CONTEXT_CHARS=20000
 YOUTUBE_API_KEY=your_youtube_api_key_here
+YOUTUBE_COOKIES_FILE=/etc/secrets/youtube_cookies.txt
+YOUTUBE_USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
 GOOGLE_BOOKS_API_KEY=your_google_books_api_key_here
 OPENALEX_EMAIL=your_email_optional
 YOUTUBE_DOCX_TEMP_DIR=temp/youtube_docx
@@ -296,6 +298,8 @@ JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
 ```
 
 If Render free tier memory or request time becomes a problem, set `ENABLE_AUDIO_TRANSCRIPTION=False`; YouTube videos without captions will still offer manual transcript fallback.
+
+If YouTube blocks Render with a bot challenge, add a Render Secret File at `/etc/secrets/youtube_cookies.txt` and keep `YOUTUBE_COOKIES_FILE` pointed at that path. StudyPilot applies the cookie file and configured browser User-Agent to all optional `yt-dlp` metadata, subtitle, caption, and audio fallback calls. If YouTube still blocks the request, the backend returns the manual transcript fallback instead of crashing.
 
 Use the Supabase pooled PostgreSQL `DATABASE_URL` and keep `sslmode=require`.
 

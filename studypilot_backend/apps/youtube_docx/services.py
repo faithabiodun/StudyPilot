@@ -89,6 +89,41 @@ def ensure_audio_temp_dir():
     return temp_dir
 
 
+def youtube_cookies_file_exists():
+    try:
+        cookie_path = getattr(settings, "YOUTUBE_COOKIES_FILE", "")
+        return bool(cookie_path and Path(cookie_path).is_file())
+    except Exception:
+        return False
+
+
+def get_ytdlp_options(extra_options=None):
+    user_agent = getattr(settings, "YOUTUBE_USER_AGENT", "").strip()
+    options = {
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "retries": 3,
+        "extractor_retries": 3,
+        "socket_timeout": 30,
+        "http_headers": {
+            "User-Agent": user_agent,
+        },
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web", "android"],
+            }
+        },
+    }
+    if youtube_cookies_file_exists():
+        options["cookiefile"] = settings.YOUTUBE_COOKIES_FILE
+    if extra_options:
+        options.update(extra_options)
+    logger.info("YouTube DOCX: YouTube cookies configured: %s", "true" if options.get("cookiefile") else "false")
+    logger.info("YouTube DOCX: YouTube user agent configured: %s", "true" if bool(user_agent) else "false")
+    return options
+
+
 def _delete_temp_path(path):
     if not path:
         return
@@ -307,16 +342,13 @@ def _fetch_ytdlp_subtitle_text(youtube_url, include_automatic=False):
     from yt_dlp import YoutubeDL
 
     source_label = "automatic captions" if include_automatic else "subtitles"
-    logger.info("YouTube DOCX: trying yt-dlp %s", source_label)
-    options = {
-        "quiet": True,
-        "no_warnings": True,
+    logger.info("YouTube DOCX: yt-dlp %s attempt started", source_label)
+    options = get_ytdlp_options({
         "skip_download": True,
-        "noplaylist": True,
         "writesubtitles": True,
         "writeautomaticsub": True,
         "subtitleslangs": ["en", "en-US", "en-GB", "all"],
-    }
+    })
     with YoutubeDL(options) as ydl:
         info = ydl.extract_info(youtube_url, download=False)
 
@@ -325,7 +357,8 @@ def _fetch_ytdlp_subtitle_text(youtube_url, include_automatic=False):
         if not subtitle_url:
             continue
         try:
-            response = requests.get(subtitle_url, timeout=12)
+            headers = {"User-Agent": getattr(settings, "YOUTUBE_USER_AGENT", "").strip()} if getattr(settings, "YOUTUBE_USER_AGENT", "").strip() else None
+            response = requests.get(subtitle_url, headers=headers, timeout=12)
             response.raise_for_status()
             text = _validate_transcript_text(_clean_subtitle_text(response.text))
             logger.info("YouTube DOCX: transcript found yes source=yt_dlp_%s", "automatic_captions" if include_automatic else "subtitles")
@@ -340,19 +373,14 @@ def _fetch_ytdlp_subtitle_text(youtube_url, include_automatic=False):
 def _download_youtube_audio(youtube_url, video_id):
     from yt_dlp import YoutubeDL
 
-    logger.info("YouTube DOCX: trying audio transcription download video_id=%s", video_id)
+    logger.info("YouTube DOCX: yt-dlp audio attempt started video_id=%s", video_id)
     audio_dir = ensure_audio_temp_dir()
     output_template = str(audio_dir / f"{video_id}_{uuid.uuid4().hex}.%(ext)s")
-    options = {
-        "quiet": True,
-        "no_warnings": True,
+    options = get_ytdlp_options({
         "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
         "outtmpl": output_template,
-        "noplaylist": True,
-        "socket_timeout": 20,
-        "retries": 2,
         "fragment_retries": 2,
-    }
+    })
     before = {path.resolve() for path in audio_dir.glob("*") if path.is_file()}
     with YoutubeDL(options) as ydl:
         info = ydl.extract_info(youtube_url, download=True)
@@ -466,7 +494,7 @@ def get_youtube_transcript(youtube_url):
     return fetch_youtube_transcript_with_fallback(video_id, canonical_youtube_url(video_id), allow_audio=True)
 
 
-def fetch_youtube_metadata(youtube_url, video_id):
+def fetch_youtube_metadata(youtube_url, video_id, allow_ytdlp=True):
     logger.info("YouTube DOCX: metadata lookup started video_id=%s", video_id)
     metadata = {
         "title": "YouTube Lecture",
@@ -537,10 +565,16 @@ def fetch_youtube_metadata(youtube_url, video_id):
         except Exception as exc:
             logger.info("YouTube DOCX: YouTube Data API metadata failed video_id=%s reason=%s", video_id, exc.__class__.__name__)
 
+    if not allow_ytdlp:
+        logger.info("YouTube DOCX: yt-dlp metadata skipped video_id=%s reason=manual_transcript", video_id)
+        logger.info("YouTube DOCX: metadata fallback used video_id=%s", video_id)
+        return metadata
+
     try:
         from yt_dlp import YoutubeDL
 
-        with YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True, "socket_timeout": 12}) as ydl:
+        logger.info("YouTube DOCX: yt-dlp metadata attempt started video_id=%s", video_id)
+        with YoutubeDL(get_ytdlp_options({"skip_download": True})) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
         metadata.update(
             {
@@ -554,7 +588,7 @@ def fetch_youtube_metadata(youtube_url, video_id):
         logger.info("YouTube DOCX: metadata fetched yes video_id=%s source=yt_dlp_optional", video_id)
         return metadata
     except Exception as exc:
-        logger.info("YouTube DOCX: optional yt-dlp metadata failed video_id=%s reason=%s", video_id, exc.__class__.__name__)
+        logger.info("YouTube DOCX: yt-dlp metadata attempt failed video_id=%s reason=%s", video_id, exc.__class__.__name__)
 
     logger.info("YouTube DOCX: metadata fallback used video_id=%s", video_id)
     return metadata
@@ -1139,7 +1173,7 @@ def generate_youtube_docx(youtube_url, manual_transcript="", document_options=No
         except YouTubeDocxError:
             logger.info("YouTube DOCX: transcript fetched no video_id=%s", video_id)
             raise
-    metadata = fetch_youtube_metadata(canonical_url, video_id)
+    metadata = fetch_youtube_metadata(canonical_url, video_id, allow_ytdlp=not bool(manual_text))
     target_pages = estimate_pages(transcript, metadata, detail_level=document_options["detail_level"])
     document_options["target_pages"] = target_pages
     sections_count = 12

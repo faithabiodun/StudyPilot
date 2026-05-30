@@ -213,6 +213,11 @@ for writable_dir in (MEDIA_ROOT, PDF_TEMP_DIR, FILE_UPLOAD_TEMP_DIR):
     writable_dir.mkdir(parents=True, exist_ok=True)
 ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".txt"}
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
+YOUTUBE_COOKIES_FILE = os.getenv("YOUTUBE_COOKIES_FILE", "").strip()
+YOUTUBE_USER_AGENT = os.getenv(
+    "YOUTUBE_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+).strip()
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
 OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL", "")
 YOUTUBE_DOCX_TEMP_DIR_VALUE = os.getenv("YOUTUBE_DOCX_TEMP_DIR", "/tmp/youtube_docx" if RENDER_EXTERNAL_HOSTNAME else "temp/youtube_docx")

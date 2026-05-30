@@ -18,6 +18,7 @@ from .services import (
     cleanup_old_docx_files,
     generate_youtube_docx,
     get_temp_docx_path,
+    youtube_cookies_file_exists,
 )
 
 
@@ -63,7 +64,7 @@ class YouTubeDocxGenerateView(APIView):
                 return Response(
                     {
                         "success": False,
-                        "message": "StudyPilot could not fetch the transcript automatically for this video. You can still generate the DOCX by pasting the transcript below.",
+                        "message": "StudyPilot could not fetch this transcript automatically. Paste the transcript below and generate your DOCX.",
                         "errors": {
                             "youtube_url": "Paste the transcript manually to continue."
                         },
@@ -121,6 +122,9 @@ class YouTubeDocxDiagnosticsView(APIView):
                 "youtube_docx": "running",
                 "deepseek_configured": bool(settings.DEEPSEEK_API_KEY),
                 "youtube_api_key_configured": bool(settings.YOUTUBE_API_KEY),
+                "youtube_cookies_configured": bool(getattr(settings, "YOUTUBE_COOKIES_FILE", "")),
+                "youtube_cookies_file_exists": youtube_cookies_file_exists(),
+                "youtube_user_agent_configured": bool(getattr(settings, "YOUTUBE_USER_AGENT", "")),
                 "yt_dlp_available": package_available("yt_dlp"),
                 "youtube_transcript_api_available": package_available("youtube_transcript_api"),
                 "python_docx_available": package_available("docx"),

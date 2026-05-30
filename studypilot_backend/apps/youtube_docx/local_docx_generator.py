@@ -13,6 +13,8 @@ from apps.study_tools.local_generators import (
     split_into_sentences,
 )
 
+from .services import get_ytdlp_options
+
 
 STOPWORDS = {
     "about",
@@ -66,7 +68,7 @@ def extract_youtube_video_id(url):
 def fetch_video_metadata(url):
     from yt_dlp import YoutubeDL
 
-    with YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True}) as ydl:
+    with YoutubeDL(get_ytdlp_options({"skip_download": True})) as ydl:
         return ydl.extract_info(url, download=False)
 
 

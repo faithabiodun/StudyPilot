@@ -140,7 +140,7 @@ export default function YouTubeDocxPage() {
     } catch (requestError) {
       const manualRequired = Boolean(requestError.payload?.manual_transcript_allowed || requestError.payload?.data?.manual_transcript_required);
       const message = manualRequired
-        ? "StudyPilot could not fetch the transcript automatically for this video. You can still generate the DOCX by pasting the transcript below."
+        ? "StudyPilot could not fetch this transcript automatically. Paste the transcript below and generate your DOCX."
         : requestError.message || "Could not generate DOCX.";
       setError(message);
       if (

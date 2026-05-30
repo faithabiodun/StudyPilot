@@ -237,6 +237,8 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
    - `DEEPSEEK_BASE_URL=https://api.deepseek.com`
    - `DEEPSEEK_MODEL=deepseek-v4-flash`
    - `YOUTUBE_API_KEY`
+   - `YOUTUBE_COOKIES_FILE=/etc/secrets/youtube_cookies.txt`
+   - `YOUTUBE_USER_AGENT=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36`
    - `GOOGLE_BOOKS_API_KEY`
    - `OPENALEX_EMAIL`
    - `PDF_TEMP_DIR=/tmp/studypilot_pdfs`
@@ -253,6 +255,8 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
 5. Use the Supabase PostgreSQL pooled `DATABASE_URL` with `sslmode=require`.
 
 If Render becomes too slow or runs out of memory during audio transcription, set `ENABLE_AUDIO_TRANSCRIPTION=False`; videos without captions will then use the manual transcript fallback.
+
+For YouTube requests that trigger a bot challenge on Render, add a Render Secret File at `/etc/secrets/youtube_cookies.txt` and set `YOUTUBE_COOKIES_FILE` to that path. The backend will use those cookies and the configured browser User-Agent for optional `yt-dlp` subtitle, metadata, and audio fallback calls. If YouTube still blocks the cloud host, StudyPilot falls back to the manual transcript flow instead of returning a server error.
 
 ## Test Live Deployment
 
