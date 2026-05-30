@@ -21,6 +21,13 @@ from .services import (
 )
 
 
+def package_available(module_name):
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except Exception:
+        return False
+
+
 class YouTubeDocxAnalyzeView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -53,13 +60,12 @@ class YouTubeDocxGenerateView(APIView):
             data = generate_youtube_docx(youtube_url, manual_transcript=manual_transcript, document_options=document_options)
         except YouTubeDocxError as exc:
             if str(exc) in {TRANSCRIPT_UNAVAILABLE_MESSAGE, "Audio transcription failed. Paste transcript manually to continue."}:
-                message = str(exc)
                 return Response(
                     {
                         "success": False,
-                        "message": message,
+                        "message": "StudyPilot could not fetch the transcript automatically for this video. You can still generate the DOCX by pasting the transcript below.",
                         "errors": {
-                            "youtube_url": "Transcript could not be fetched automatically. Paste the transcript manually to continue."
+                            "youtube_url": "Paste the transcript manually to continue."
                         },
                         "data": {
                             "manual_transcript_required": True,
@@ -109,15 +115,21 @@ class YouTubeDocxDiagnosticsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        return success_response(
-            "YouTube DOCX diagnostics fetched",
+        return Response(
             {
+                "success": True,
+                "youtube_docx": "running",
+                "deepseek_configured": bool(settings.DEEPSEEK_API_KEY),
+                "youtube_api_key_configured": bool(settings.YOUTUBE_API_KEY),
+                "yt_dlp_available": package_available("yt_dlp"),
+                "youtube_transcript_api_available": package_available("youtube_transcript_api"),
+                "python_docx_available": package_available("docx"),
+                "faster_whisper_available": package_available("faster_whisper"),
                 "audio_transcription_enabled": settings.ENABLE_AUDIO_TRANSCRIPTION,
                 "whisper_model_size": settings.WHISPER_MODEL_SIZE,
                 "audio_temp_dir": str(settings.YOUTUBE_AUDIO_TEMP_DIR),
                 "docx_temp_dir": str(settings.YOUTUBE_DOCX_TEMP_DIR),
-                "deepseek_configured": bool(settings.DEEPSEEK_API_KEY),
-                "yt_dlp_available": importlib.util.find_spec("yt_dlp") is not None,
-                "faster_whisper_available": importlib.util.find_spec("faster_whisper") is not None,
-            },
+                "render_safe_metadata": True,
+                "note": "yt-dlp may be blocked by YouTube on cloud hosts, so metadata uses oEmbed or YouTube Data API first.",
+            }
         )

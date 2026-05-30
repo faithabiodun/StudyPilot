@@ -138,11 +138,13 @@ export default function YouTubeDocxPage() {
       setResult(response.data);
       setShowManualTranscript(false);
     } catch (requestError) {
-      const message = requestError.message || "Could not generate DOCX.";
+      const manualRequired = Boolean(requestError.payload?.manual_transcript_allowed || requestError.payload?.data?.manual_transcript_required);
+      const message = manualRequired
+        ? "StudyPilot could not fetch the transcript automatically for this video. You can still generate the DOCX by pasting the transcript below."
+        : requestError.message || "Could not generate DOCX.";
       setError(message);
       if (
-        requestError.payload?.manual_transcript_allowed ||
-        requestError.payload?.data?.manual_transcript_required ||
+        manualRequired ||
         message.toLowerCase().includes("transcript") ||
         message.toLowerCase().includes("captions")
       ) {
@@ -312,7 +314,7 @@ export default function YouTubeDocxPage() {
                     <span className="mb-1 block text-sm font-semibold text-pilot-ink">Transcript could not be fetched automatically.</span>
                     <span className="mb-2 block text-xs font-bold text-pilot-muted">Paste the transcript below to continue.</span>
                     <textarea
-                      placeholder="Paste transcript here..."
+                      placeholder="Paste YouTube transcript here..."
                       value={manualTranscript}
                       onChange={(event) => setManualTranscript(event.target.value)}
                       disabled={generating}

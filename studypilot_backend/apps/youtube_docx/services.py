@@ -63,6 +63,14 @@ def format_duration(seconds):
     return f"{minutes}:{secs:02d}"
 
 
+def parse_iso8601_duration(value):
+    match = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value or "")
+    if not match:
+        return 0
+    hours, minutes, seconds = (int(part or 0) for part in match.groups())
+    return hours * 3600 + minutes * 60 + seconds
+
+
 def safe_filename(value, fallback="youtube_lecture"):
     cleaned = clean_safe_string(value, fallback=fallback, max_length=90).lower()
     cleaned = re.sub(r"[^a-z0-9]+", "_", cleaned).strip("_")
@@ -461,34 +469,14 @@ def get_youtube_transcript(youtube_url):
 def fetch_youtube_metadata(youtube_url, video_id):
     logger.info("YouTube DOCX: metadata lookup started video_id=%s", video_id)
     metadata = {
-        "title": f"YouTube Lecture {video_id}",
-        "channel": "",
+        "title": "YouTube Lecture",
+        "channel": "YouTube",
         "duration": 0,
-        "thumbnail": "",
+        "thumbnail": f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
         "url": canonical_youtube_url(video_id),
         "webpage_url": canonical_youtube_url(video_id),
         "video_id": video_id,
     }
-    try:
-        from yt_dlp import YoutubeDL
-
-        with YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True, "socket_timeout": 12}) as ydl:
-            info = ydl.extract_info(youtube_url, download=False)
-        metadata.update(
-            {
-                "title": clean_safe_string(info.get("title"), fallback=metadata["title"], max_length=180),
-                "channel": clean_safe_string(info.get("channel") or info.get("uploader"), max_length=140),
-                "duration": int(info.get("duration") or 0),
-                "thumbnail": info.get("thumbnail") or "",
-                "url": canonical_youtube_url(video_id),
-                "webpage_url": info.get("webpage_url") or canonical_youtube_url(video_id),
-                "video_id": video_id,
-            }
-        )
-        logger.info("YouTube DOCX: metadata fetched yes video_id=%s source=yt_dlp", video_id)
-        return metadata
-    except Exception:
-        logger.warning("YouTube DOCX: yt-dlp metadata lookup failed video_id=%s; trying public metadata fallback.", video_id, exc_info=True)
 
     try:
         response = requests.get(
@@ -501,17 +489,74 @@ def fetch_youtube_metadata(youtube_url, video_id):
         metadata.update(
             {
                 "title": clean_safe_string(info.get("title"), fallback=metadata["title"], max_length=180),
-                "channel": clean_safe_string(info.get("author_name"), max_length=140),
-                "thumbnail": info.get("thumbnail_url") or f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+                "channel": clean_safe_string(info.get("author_name"), fallback=metadata["channel"], max_length=140),
+                "thumbnail": info.get("thumbnail_url") or metadata["thumbnail"],
                 "url": canonical_youtube_url(video_id),
                 "webpage_url": canonical_youtube_url(video_id),
                 "video_id": video_id,
             }
         )
         logger.info("YouTube DOCX: metadata fetched yes video_id=%s source=oembed", video_id)
-    except Exception:
-        metadata["thumbnail"] = f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg"
-        logger.warning("YouTube DOCX: metadata fetched no video_id=%s; using safe fallback.", video_id, exc_info=True)
+        return metadata
+    except Exception as exc:
+        logger.info("YouTube DOCX: oEmbed metadata failed video_id=%s reason=%s", video_id, exc.__class__.__name__)
+
+    if settings.YOUTUBE_API_KEY:
+        try:
+            response = requests.get(
+                "https://www.googleapis.com/youtube/v3/videos",
+                params={
+                    "part": "snippet,contentDetails",
+                    "id": video_id,
+                    "key": settings.YOUTUBE_API_KEY,
+                },
+                timeout=10,
+            )
+            response.raise_for_status()
+            items = response.json().get("items") or []
+            if items:
+                item = items[0]
+                snippet = item.get("snippet") or {}
+                thumbnails = snippet.get("thumbnails") or {}
+                thumbnail = (
+                    thumbnails.get("maxres", {}).get("url")
+                    or thumbnails.get("high", {}).get("url")
+                    or thumbnails.get("medium", {}).get("url")
+                    or metadata["thumbnail"]
+                )
+                metadata.update(
+                    {
+                        "title": clean_safe_string(snippet.get("title"), fallback=metadata["title"], max_length=180),
+                        "channel": clean_safe_string(snippet.get("channelTitle"), fallback=metadata["channel"], max_length=140),
+                        "duration": parse_iso8601_duration((item.get("contentDetails") or {}).get("duration")),
+                        "thumbnail": thumbnail,
+                    }
+                )
+                logger.info("YouTube DOCX: metadata fetched yes video_id=%s source=youtube_data_api", video_id)
+                return metadata
+        except Exception as exc:
+            logger.info("YouTube DOCX: YouTube Data API metadata failed video_id=%s reason=%s", video_id, exc.__class__.__name__)
+
+    try:
+        from yt_dlp import YoutubeDL
+
+        with YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True, "socket_timeout": 12}) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+        metadata.update(
+            {
+                "title": clean_safe_string(info.get("title"), fallback=metadata["title"], max_length=180),
+                "channel": clean_safe_string(info.get("channel") or info.get("uploader"), fallback=metadata["channel"], max_length=140),
+                "duration": int(info.get("duration") or 0),
+                "thumbnail": info.get("thumbnail") or metadata["thumbnail"],
+                "webpage_url": info.get("webpage_url") or canonical_youtube_url(video_id),
+            }
+        )
+        logger.info("YouTube DOCX: metadata fetched yes video_id=%s source=yt_dlp_optional", video_id)
+        return metadata
+    except Exception as exc:
+        logger.info("YouTube DOCX: optional yt-dlp metadata failed video_id=%s reason=%s", video_id, exc.__class__.__name__)
+
+    logger.info("YouTube DOCX: metadata fallback used video_id=%s", video_id)
     return metadata
 
 
@@ -539,7 +584,7 @@ def analyze_youtube_video(youtube_url):
         "video_id": video_id,
         "title": metadata.get("title") or f"YouTube Lecture {video_id}",
         "channel": metadata.get("channel") or "Unknown channel",
-        "duration": format_duration(metadata.get("duration")),
+        "duration": format_duration(metadata.get("duration")) if metadata.get("duration") else "Unknown",
         "duration_seconds": int(metadata.get("duration") or 0),
         "thumbnail": metadata.get("thumbnail") or "",
         "youtube_url": canonical_url,
