@@ -246,14 +246,14 @@ Recommended Render settings:
 
 - Runtime: Python
 - Root directory: `studypilot_backend`
-- Build command: `pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate`
-- Start command: `gunicorn config.wsgi:application`
+- Build command: `pip install -r requirements.txt`
+- Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 180 --workers 1`
 - Health check path: `/api/health/`
 
 The included `Procfile` also defines:
 
 ```text
-web: gunicorn config.wsgi:application
+web: python manage.py migrate && gunicorn config.wsgi:application --timeout 180 --workers 1
 ```
 
 Set these Render environment variables:
@@ -276,16 +276,20 @@ DEEPSEEK_TIMEOUT_SECONDS=45
 MAX_DEEPSEEK_CONTEXT_CHARS=20000
 MAX_PDF_PAGES=50
 MAX_EXTRACTED_TEXT_CHARS=80000
-MAX_UPLOAD_SIZE=12582912
-MEDIA_ROOT=/tmp/studypilot_media
-FILE_UPLOAD_TEMP_DIR=/tmp/studypilot_uploads
+MAX_PDF_UPLOAD_MB=50
+MAX_UPLOAD_SIZE=52428800
+DATA_UPLOAD_MAX_MEMORY_SIZE=52428800
+FILE_UPLOAD_MAX_MEMORY_SIZE=52428800
+PDF_TEMP_DIR=/tmp/studypilot_pdfs
+MEDIA_ROOT=/tmp/studypilot_pdfs
+FILE_UPLOAD_TEMP_DIR=/tmp/studypilot_pdfs
 YOUTUBE_API_KEY=your_youtube_api_key_here
 GOOGLE_BOOKS_API_KEY=your_google_books_api_key_here
 OPENALEX_EMAIL=your_email_optional
 YOUTUBE_AUDIO_TEMP_DIR=/tmp/youtube_audio
 YOUTUBE_DOCX_TEMP_DIR=/tmp/youtube_docx
 YOUTUBE_DOCX_EXPIRY_MINUTES=60
-ENABLE_AUDIO_TRANSCRIPTION=True
+ENABLE_AUDIO_TRANSCRIPTION=False
 WHISPER_MODEL_SIZE=base
 JWT_ACCESS_TOKEN_LIFETIME_MINUTES=60
 JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
@@ -295,7 +299,7 @@ Use the Supabase pooled PostgreSQL `DATABASE_URL` and keep `sslmode=require`.
 
 Temporary file behavior:
 
-- Uploaded PDFs are written to `MEDIA_ROOT`, extracted, then deleted.
+- Uploaded PDFs are written to `/tmp/studypilot_pdfs`, extracted, then deleted.
 - YouTube audio and DOCX files use `/tmp/...` paths and are temporary.
 - Do not use Supabase Storage for uploaded PDFs or generated DOCX files.
 

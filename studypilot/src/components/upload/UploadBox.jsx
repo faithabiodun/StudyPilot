@@ -1,7 +1,7 @@
 import { UploadCloud } from "lucide-react";
 import { MAX_PDF_UPLOAD_MB } from "../../services/materialService";
 
-export default function UploadBox({ fileName, onFile }) {
+export default function UploadBox({ fileName, onFile, uploadLimitMb = MAX_PDF_UPLOAD_MB }) {
   return (
     <label className="flex cursor-pointer flex-col items-center justify-center rounded-[1.5rem] border border-dashed border-pilot-blue bg-pilot-sky p-10 text-center transition hover:bg-pilot-soft">
       <div className="grid h-16 w-16 place-items-center rounded-2xl bg-white text-pilot-blue shadow-soft">
@@ -9,7 +9,7 @@ export default function UploadBox({ fileName, onFile }) {
       </div>
       <p className="mt-4 text-lg font-black text-pilot-ink">{fileName || "Drag & drop your files here"}</p>
       <p className="mt-1 text-sm text-pilot-muted">or click to upload one readable PDF</p>
-      <p className="mt-1 text-xs font-semibold text-pilot-muted">Maximum PDF size: {MAX_PDF_UPLOAD_MB}MB</p>
+      <p className="mt-1 text-xs font-semibold text-pilot-muted">Maximum PDF size: {uploadLimitMb}MB</p>
       <input type="file" accept="application/pdf,.pdf" className="hidden" onChange={(event) => onFile(event.target.files?.[0])} />
     </label>
   );

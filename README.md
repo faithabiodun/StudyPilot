@@ -221,8 +221,8 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
 1. Create a Render Web Service from this repository.
 2. Set the backend root directory to `studypilot_backend`.
 3. Use:
-   - Build command: `pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate`
-   - Start command: `gunicorn config.wsgi:application`
+   - Build command: `pip install -r requirements.txt`
+   - Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 180 --workers 1`
    - Health check path: `/api/health/`
 4. Add backend environment variables:
    - `SECRET_KEY`
@@ -239,25 +239,31 @@ Before committing, confirm `.env`, `.env.*`, `node_modules`, `dist`, `media`, `t
    - `YOUTUBE_API_KEY`
    - `GOOGLE_BOOKS_API_KEY`
    - `OPENALEX_EMAIL`
-   - `MEDIA_ROOT=/tmp/studypilot_media`
-   - `FILE_UPLOAD_TEMP_DIR=/tmp/studypilot_uploads`
+   - `PDF_TEMP_DIR=/tmp/studypilot_pdfs`
+   - `MEDIA_ROOT=/tmp/studypilot_pdfs`
+   - `FILE_UPLOAD_TEMP_DIR=/tmp/studypilot_pdfs`
+   - `DATA_UPLOAD_MAX_MEMORY_SIZE=52428800`
+   - `FILE_UPLOAD_MAX_MEMORY_SIZE=52428800`
+   - `MAX_PDF_UPLOAD_MB=50`
    - `YOUTUBE_AUDIO_TEMP_DIR=/tmp/youtube_audio`
    - `YOUTUBE_DOCX_TEMP_DIR=/tmp/youtube_docx`
    - `YOUTUBE_DOCX_EXPIRY_MINUTES=60`
+   - `ENABLE_AUDIO_TRANSCRIPTION=False`
 5. Use the Supabase PostgreSQL pooled `DATABASE_URL` with `sslmode=require`.
 
 ## Test Live Deployment
 
 1. Open `https://studypilot-r710.onrender.com/api/health/`.
-2. Open `https://studypilot-r710.onrender.com/api/docs/`.
-3. Open `https://nowstudypilot.onrender.com`.
-4. Register or sign in.
-5. Test Google OAuth callback.
-6. Upload a PDF and confirm the PDF file is not retained.
-7. Generate PDF study outputs.
-8. Search Resource Hub and open a result.
-9. Ask AI Advisor a direct question.
-10. Generate and download a YouTube DOCX, then confirm it is temporary.
+2. Open `https://studypilot-r710.onrender.com/api/health/deployment/`.
+3. Open `https://studypilot-r710.onrender.com/api/docs/`.
+4. Open `https://nowstudypilot.onrender.com`.
+5. Register or sign in.
+6. Test Google OAuth callback.
+7. Upload a PDF under the configured upload limit and confirm the PDF file is not retained.
+8. Generate PDF study outputs.
+9. Search Resource Hub and open a result.
+10. Ask AI Advisor a direct question.
+11. Generate and download a YouTube DOCX, then confirm it is temporary.
 11. Open Dashboard and Profile.
 
 ## Build Checks

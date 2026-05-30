@@ -1,9 +1,39 @@
 import { apiRequest } from "./api";
 
-export const MAX_PDF_UPLOAD_MB = Number(import.meta.env.VITE_MAX_PDF_UPLOAD_MB || 12);
-export const MAX_PDF_UPLOAD_BYTES = MAX_PDF_UPLOAD_MB * 1024 * 1024;
+export const MAX_PDF_UPLOAD_MB = Number(import.meta.env.VITE_MAX_PDF_UPLOAD_MB || 50);
+const UPLOAD_TIMEOUT_MS = 180000;
 
-export function uploadMaterial({ file, title }) {
+function uploadErrorMessage(error, maxPdfUploadMb) {
+  if (import.meta.env.DEV) {
+    console.log("PDF upload failed status", error?.status || "");
+    console.log("PDF upload failed endpoint", "/api/documents/upload/");
+    console.log("PDF upload failed message", error?.message || "");
+  }
+  if (error?.name === "AbortError") {
+    return "The PDF took too long to process. Try a smaller file or compressed PDF.";
+  }
+  if (error?.status === 413) {
+    return "This PDF is too large. Please upload a smaller PDF.";
+  }
+  if (error?.status === 401) {
+    return "Your session expired. Please login again.";
+  }
+  if (error?.status >= 500) {
+    return "StudyPilot could not process this PDF. Please try another file.";
+  }
+  if (error?.message === "Failed to fetch" || error instanceof TypeError) {
+    return "Could not reach StudyPilot backend. Please check your connection or try again.";
+  }
+  return error?.message || `StudyPilot can process PDFs up to ${maxPdfUploadMb}MB. Please upload a readable PDF.`;
+}
+
+export async function fetchDeploymentHealth() {
+  return apiRequest("/health/deployment/", { method: "GET", skipAuth: true });
+}
+
+export async function uploadMaterial({ file, title, maxPdfUploadMb = MAX_PDF_UPLOAD_MB }) {
+  const uploadLimitMb = Number(maxPdfUploadMb || MAX_PDF_UPLOAD_MB);
+  const uploadLimitBytes = uploadLimitMb * 1024 * 1024;
   if (import.meta.env.DEV) {
     console.log("Upload endpoint being called", "/api/documents/upload/");
     console.log("Selected file exists", Boolean(file));
@@ -11,19 +41,22 @@ export function uploadMaterial({ file, title }) {
     console.log("File size", file?.size || 0);
     console.log("Access token exists", Boolean(localStorage.getItem("studypilot_access_token")));
   }
-  if (file?.size > MAX_PDF_UPLOAD_BYTES) {
+  if (file?.size > uploadLimitBytes) {
     const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-    throw new Error(`This PDF is ${sizeMb}MB. StudyPilot can process PDFs up to ${MAX_PDF_UPLOAD_MB}MB on the deployed app. Please upload a smaller or compressed PDF.`);
+    throw new Error(`This PDF is ${sizeMb}MB. StudyPilot can process PDFs up to ${uploadLimitMb}MB. Please upload a smaller or compressed PDF.`);
   }
   const formData = new FormData();
   formData.append("file", file);
   if (title) formData.append("title", title);
-  return apiRequest("/documents/upload/", { method: "POST", body: formData }).catch((error) => {
-    if (error?.message === "Failed to fetch") {
-      throw new Error(`The PDF upload could not reach StudyPilot. If this PDF is near ${MAX_PDF_UPLOAD_MB}MB, please compress it or choose a smaller file and try again.`);
-    }
-    throw error;
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  try {
+    return await apiRequest("/documents/upload/", { method: "POST", body: formData, signal: controller.signal });
+  } catch (error) {
+    throw new Error(uploadErrorMessage(error, uploadLimitMb));
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 export function fetchDocuments() {

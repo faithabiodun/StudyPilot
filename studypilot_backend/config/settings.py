@@ -131,13 +131,6 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
-MEDIA_URL = "/media/"
-MEDIA_ROOT_VALUE = os.getenv("MEDIA_ROOT", "media")
-if not DEBUG and not os.getenv("MEDIA_ROOT"):
-    MEDIA_ROOT_VALUE = "/tmp/studypilot_media"
-MEDIA_ROOT = Path(MEDIA_ROOT_VALUE)
-if not MEDIA_ROOT.is_absolute():
-    MEDIA_ROOT = BASE_DIR / MEDIA_ROOT
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "https://nowstudypilot.onrender.com,http://localhost:5173,http://127.0.0.1:5173")
@@ -192,16 +185,28 @@ DEEPSEEK_KEY_LOADED = bool(DEEPSEEK_API_KEY.strip())
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))
 MAX_EXTRACTED_TEXT_CHARS = int(os.getenv("MAX_EXTRACTED_TEXT_CHARS", "80000"))
 MAX_DEEPSEEK_CONTEXT_CHARS = int(os.getenv("MAX_DEEPSEEK_CONTEXT_CHARS", "20000"))
-MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(50 * 1024 * 1024)))
-DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE + (1024 * 1024)
-FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE
-FILE_UPLOAD_TEMP_DIR_VALUE = os.getenv("FILE_UPLOAD_TEMP_DIR", "temp/uploads")
+MAX_PDF_UPLOAD_MB = int(os.getenv("MAX_PDF_UPLOAD_MB", "50"))
+MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(MAX_PDF_UPLOAD_MB * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(MAX_UPLOAD_SIZE)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(MAX_UPLOAD_SIZE)))
+PDF_TEMP_DIR_VALUE = os.getenv("PDF_TEMP_DIR", "temp/pdfs")
+if not DEBUG and not os.getenv("PDF_TEMP_DIR"):
+    PDF_TEMP_DIR_VALUE = "/tmp/studypilot_pdfs"
+PDF_TEMP_DIR = Path(PDF_TEMP_DIR_VALUE)
+if not PDF_TEMP_DIR.is_absolute():
+    PDF_TEMP_DIR = BASE_DIR / PDF_TEMP_DIR
+MEDIA_URL = "/media/"
+MEDIA_ROOT_VALUE = os.getenv("MEDIA_ROOT", str(PDF_TEMP_DIR))
+MEDIA_ROOT = Path(MEDIA_ROOT_VALUE)
+if not MEDIA_ROOT.is_absolute():
+    MEDIA_ROOT = BASE_DIR / MEDIA_ROOT
+FILE_UPLOAD_TEMP_DIR_VALUE = os.getenv("FILE_UPLOAD_TEMP_DIR", str(PDF_TEMP_DIR))
 if not DEBUG and not os.getenv("FILE_UPLOAD_TEMP_DIR"):
-    FILE_UPLOAD_TEMP_DIR_VALUE = "/tmp/studypilot_uploads"
+    FILE_UPLOAD_TEMP_DIR_VALUE = str(PDF_TEMP_DIR)
 FILE_UPLOAD_TEMP_DIR = Path(FILE_UPLOAD_TEMP_DIR_VALUE)
 if not FILE_UPLOAD_TEMP_DIR.is_absolute():
     FILE_UPLOAD_TEMP_DIR = BASE_DIR / FILE_UPLOAD_TEMP_DIR
-for writable_dir in (MEDIA_ROOT, FILE_UPLOAD_TEMP_DIR):
+for writable_dir in (MEDIA_ROOT, PDF_TEMP_DIR, FILE_UPLOAD_TEMP_DIR):
     writable_dir.mkdir(parents=True, exist_ok=True)
 ALLOWED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".txt"}
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
@@ -220,5 +225,5 @@ if not DEBUG and not os.getenv("YOUTUBE_AUDIO_TEMP_DIR"):
 YOUTUBE_AUDIO_TEMP_DIR = Path(YOUTUBE_AUDIO_TEMP_DIR_VALUE)
 if not YOUTUBE_AUDIO_TEMP_DIR.is_absolute():
     YOUTUBE_AUDIO_TEMP_DIR = BASE_DIR / YOUTUBE_AUDIO_TEMP_DIR
-ENABLE_AUDIO_TRANSCRIPTION = os.getenv("ENABLE_AUDIO_TRANSCRIPTION", "True").lower() == "true"
+ENABLE_AUDIO_TRANSCRIPTION = os.getenv("ENABLE_AUDIO_TRANSCRIPTION", "True" if DEBUG else "False").lower() == "true"
 WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")

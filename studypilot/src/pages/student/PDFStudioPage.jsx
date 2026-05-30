@@ -7,7 +7,7 @@ import Select from "../../components/common/Select";
 import PageHeader from "../../components/layout/PageHeader";
 import UploadBox from "../../components/upload/UploadBox";
 import { generateFlashcards } from "../../services/flashcardService";
-import { uploadMaterial } from "../../services/materialService";
+import { fetchDeploymentHealth, MAX_PDF_UPLOAD_MB, uploadMaterial } from "../../services/materialService";
 import { generateMCQs, generateQuiz } from "../../services/quizService";
 
 const toolConfig = {
@@ -417,6 +417,24 @@ export default function PDFStudioPage() {
   const [error, setError] = useState("");
   const [loadingAction, setLoadingAction] = useState("");
   const [result, setResult] = useState(null);
+  const [uploadLimitMb, setUploadLimitMb] = useState(MAX_PDF_UPLOAD_MB);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchDeploymentHealth()
+      .then((response) => {
+        const limit = Number(response?.upload_limit_mb ?? response?.data?.upload_limit_mb);
+        if (mounted && limit > 0) setUploadLimitMb(limit);
+      })
+      .catch(() => {
+        if (import.meta.env.DEV) {
+          console.log("Deployment upload limit could not be fetched; using frontend default.");
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const addFile = async (file) => {
     if (!file) return;
@@ -431,7 +449,7 @@ export default function PDFStudioPage() {
     setLoadingAction("upload");
     setStatus("Extracting readable text from your PDF...");
     try {
-      const response = await uploadMaterial({ file, title: file.name.replace(/\.[^/.]+$/, "") });
+      const response = await uploadMaterial({ file, title: file.name.replace(/\.[^/.]+$/, ""), maxPdfUploadMb: uploadLimitMb });
       const document = response.data;
       setActiveDocument(document);
       setStatus(`PDF processed successfully. Extracted ${document.extracted_text_length || 0} characters from ${document.page_count || "unknown"} pages in ${document.processing_time_seconds || "a few"} seconds. ${document.notice || ""}`);
@@ -495,7 +513,7 @@ export default function PDFStudioPage() {
     <div>
       <PageHeader title="PDF Study Converter" subtitle="Upload one readable PDF, extract its text, delete the file, then generate study tools from the saved content." />
       <DashboardCard>
-        <UploadBox fileName={latestFile || activeDocument?.original_filename} onFile={addFile} />
+        <UploadBox fileName={latestFile || activeDocument?.original_filename} onFile={addFile} uploadLimitMb={uploadLimitMb} />
         <StatusMessage message={loadingAction === "upload" ? "Extracting readable text from your PDF..." : status} />
         <StatusMessage message={error} tone="red" />
       </DashboardCard>

@@ -22,6 +22,8 @@ def process_document_text(document):
     document.status = Document.Status.PROCESSING
     document.save(update_fields=["status", "updated_at"])
     try:
+        logger.info("PDF extraction started document_id=%s", document.id)
+        logger.info("PDF temp path created document_id=%s exists=%s", document.id, bool(document.file and document.file.path))
         result = extract_pdf_text(document.file.path)
         cleaned_text = clean_extracted_text(result.get("text", ""))
         focused_text = clean_extracted_text(result.get("focused_text", "")) or cleaned_text
@@ -36,7 +38,7 @@ def process_document_text(document):
         document.status = Document.Status.PROCESSED
         document._processed_pages = result.get("processed_pages")
         document._extraction_limited = result.get("extraction_limited", False)
-        logger.info("PDF extraction succeeded for document_id=%s page_count=%s", document.id, document.page_count)
+        logger.info("PDF extraction completed document_id=%s page_count=%s", document.id, document.page_count)
         delete_document_file(document)
         document.save(update_fields=[
             "file",
@@ -53,7 +55,7 @@ def process_document_text(document):
         document.extracted_text = ""
         document.focused_extracted_text = ""
         document.status = Document.Status.FAILED
-        logger.warning("PDF extraction failed for document_id=%s", document.id, exc_info=True)
+        logger.warning("PDF extraction failed document_id=%s", document.id, exc_info=True)
         delete_document_file(document)
         document.save(update_fields=["file", "extracted_text", "focused_extracted_text", "status", "updated_at"])
         raise
@@ -106,10 +108,10 @@ class DocumentUploadView(APIView):
 
     def post(self, request):
         started_at = time.perf_counter()
-        logger.info("Document upload called. has_file=%s", "file" in request.FILES)
+        logger.info("PDF upload received has_file=%s", "file" in request.FILES)
         if "file" in request.FILES:
             upload_debug = request.FILES["file"]
-            logger.info("Upload file received name=%s content_type=%s size=%s", upload_debug.name, upload_debug.content_type, upload_debug.size)
+            logger.info("PDF upload file size=%s content_type=%s", upload_debug.size, upload_debug.content_type)
 
         serializer = DocumentUploadSerializer(data=request.data)
         if not serializer.is_valid():
