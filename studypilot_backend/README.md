@@ -95,7 +95,7 @@ python manage.py runserver
 - Runtime: Python
 - Root directory: `studypilot_backend`
 - Build command: `pip install -r requirements.txt`
-- Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 300 --workers 1`
+- Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 180 --workers 1`
 - Health check path: `/api/health/`
 
 Recommended production variables:
@@ -130,3 +130,8 @@ MAX_PDF_UPLOAD_MB=50
 .\venv\Scripts\python.exe manage.py check
 .\venv\Scripts\python.exe manage.py makemigrations --check --dry-run
 ```
+
+Deployment diagnostics:
+
+- `GET /api/health/`
+- `GET /api/health/deployment/`

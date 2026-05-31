@@ -6,6 +6,10 @@ from rest_framework import serializers
 from .models import Document
 
 
+class PDFUploadTooLargeError(serializers.ValidationError):
+    status_code = 413
+
+
 class DocumentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
     extracted_text_length = serializers.SerializerMethodField()
@@ -81,5 +85,5 @@ class DocumentUploadSerializer(serializers.Serializer):
             raise serializers.ValidationError("Only readable PDF files are supported by PDF Study Converter.")
         if file.size > settings.MAX_UPLOAD_SIZE:
             limit_mb = settings.MAX_UPLOAD_SIZE // (1024 * 1024)
-            raise serializers.ValidationError(f"File size exceeds {limit_mb}MB limit.")
+            raise PDFUploadTooLargeError(f"This PDF is too large. Please upload a smaller PDF. Maximum size: {limit_mb}MB.")
         return file

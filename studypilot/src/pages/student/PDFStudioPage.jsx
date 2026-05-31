@@ -454,6 +454,9 @@ export default function PDFStudioPage() {
       setActiveDocument(document);
       setStatus(`PDF processed successfully. Extracted ${document.extracted_text_length || 0} characters from ${document.page_count || "unknown"} pages in ${document.processing_time_seconds || "a few"} seconds. ${document.notice || ""}`);
     } catch (uploadError) {
+      if (uploadError?.status === 401) {
+        navigate("/login", { replace: true });
+      }
       setError(uploadError.message || "Invalid PDF or no readable text was found in this PDF.");
       setStatus("");
     } finally {

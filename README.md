@@ -94,7 +94,7 @@ Frontend:
 Backend:
 - Deploy `studypilot_backend/` as a Render web service
 - Build command: `pip install -r requirements.txt`
-- Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 300 --workers 1`
+- Start command: `python manage.py migrate && gunicorn config.wsgi:application --timeout 180 --workers 1`
 - Health check path: `/api/health/`
 
 Recommended backend environment variables:
@@ -137,3 +137,8 @@ Backend:
 cd studypilot_backend
 .\venv\Scripts\python.exe manage.py check
 ```
+
+Live deployment diagnostics:
+
+- `https://studypilot-r710.onrender.com/api/health/`
+- `https://studypilot-r710.onrender.com/api/health/deployment/`

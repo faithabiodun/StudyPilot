@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.db import connection
 from django.http import JsonResponse
 from django.urls import include, path
+import importlib.util
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.permissions import AllowAny
 from rest_framework.views import APIView
@@ -40,12 +41,34 @@ class DeploymentHealthView(APIView):
 
     def get(self, request):
         database_connected = False
+        pymupdf_available = False
+        pdfplumber_available = False
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
                 database_connected = cursor.fetchone()[0] == 1
         except Exception:
             database_connected = False
+
+        try:
+            pymupdf_available = importlib.util.find_spec("fitz") is not None
+        except Exception:
+            pymupdf_available = False
+
+        try:
+            pdfplumber_available = importlib.util.find_spec("pdfplumber") is not None
+        except Exception:
+            pdfplumber_available = False
+
+        try:
+            pdf_temp_dir_exists = settings.PDF_TEMP_DIR.exists()
+        except Exception:
+            pdf_temp_dir_exists = False
+
+        try:
+            cors_frontend_allowed = "https://nowstudypilot.onrender.com" in settings.CORS_ALLOWED_ORIGINS
+        except Exception:
+            cors_frontend_allowed = False
 
         return JsonResponse(
             {
@@ -55,7 +78,11 @@ class DeploymentHealthView(APIView):
                 "database": "connected" if database_connected else "unavailable",
                 "deepseek_configured": bool(settings.DEEPSEEK_API_KEY),
                 "pdf_temp_dir": str(settings.PDF_TEMP_DIR),
+                "pdf_temp_dir_exists": pdf_temp_dir_exists,
                 "upload_limit_mb": settings.MAX_UPLOAD_SIZE // (1024 * 1024),
+                "pymupdf_available": pymupdf_available,
+                "pdfplumber_available": pdfplumber_available,
+                "cors_frontend_allowed": cors_frontend_allowed,
             }
         )
 

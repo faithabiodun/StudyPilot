@@ -12,7 +12,7 @@ from apps.dashboard.services import record_activity
 from apps.utils import error_response, success_response
 
 from .models import Document
-from .serializers import DocumentSerializer, DocumentUploadSerializer
+from .serializers import DocumentSerializer, DocumentUploadSerializer, PDFUploadTooLargeError
 from .services import clean_extracted_text, clean_safe_string, delete_document_file, extract_pdf_text
 
 logger = logging.getLogger(__name__)
@@ -65,9 +65,11 @@ def process_document_text(document):
 def format_upload_error(exc):
     message = clean_safe_string(str(exc))
     if not message:
-        return "The PDF was uploaded, but readable text could not be extracted."
+        return "StudyPilot could not extract readable text from this PDF."
     if "nul" in message.lower() or "0x00" in message.lower():
         return "The uploaded PDF contained unsupported hidden characters that could not be saved safely."
+    if "no readable text" in message.lower():
+        return "StudyPilot could not extract readable text from this PDF."
     return message
 
 
@@ -115,7 +117,16 @@ class DocumentUploadView(APIView):
 
         serializer = DocumentUploadSerializer(data=request.data)
         if not serializer.is_valid():
-            return error_response("Upload failed", serializer.errors)
+            has_large_file_error = any(
+                "too large" in clean_safe_string(str(error)).lower()
+                for errors in serializer.errors.values()
+                for error in (errors if isinstance(errors, list) else [errors])
+            )
+            return error_response(
+                "This PDF is too large. Please upload a smaller PDF." if has_large_file_error else "Upload failed",
+                serializer.errors,
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE if has_large_file_error else status.HTTP_400_BAD_REQUEST,
+            )
 
         for stale_document in Document.objects.filter(user=request.user).exclude(file=""):
             if stale_document.file:
@@ -136,8 +147,18 @@ class DocumentUploadView(APIView):
         )
         try:
             process_document_text(document)
+        except PDFUploadTooLargeError as exc:
+            delete_document_file(document)
+            document.delete()
+            return error_response("This PDF is too large. Please upload a smaller PDF.", {"file": [str(exc)]}, status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
         except Exception as exc:
-            return error_response("PDF text extraction failed", {"file": format_upload_error(exc)})
+            document.refresh_from_db(fields=["status"])
+            status_code = status.HTTP_400_BAD_REQUEST if "readable text" in format_upload_error(exc).lower() else status.HTTP_500_INTERNAL_SERVER_ERROR
+            return error_response(
+                "StudyPilot could not extract readable text from this PDF." if status_code == status.HTTP_400_BAD_REQUEST else "StudyPilot could not process this PDF. Please try another readable PDF.",
+                {"file": format_upload_error(exc)},
+                status_code=status_code,
+            )
 
         elapsed = round(time.perf_counter() - started_at, 2)
         record_activity(

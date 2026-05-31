@@ -27,6 +27,14 @@ function uploadErrorMessage(error, maxPdfUploadMb) {
   return error?.message || `StudyPilot can process PDFs up to ${maxPdfUploadMb}MB. Please upload a readable PDF.`;
 }
 
+function normalizeUploadError(error, maxPdfUploadMb) {
+  const normalized = new Error(uploadErrorMessage(error, maxPdfUploadMb));
+  normalized.status = error?.status;
+  normalized.payload = error?.payload;
+  normalized.name = error?.name || "Error";
+  return normalized;
+}
+
 export async function fetchDeploymentHealth() {
   return apiRequest("/health/deployment/", { method: "GET", skipAuth: true });
 }
@@ -53,7 +61,7 @@ export async function uploadMaterial({ file, title, maxPdfUploadMb = MAX_PDF_UPL
   try {
     return await apiRequest("/documents/upload/", { method: "POST", body: formData, signal: controller.signal });
   } catch (error) {
-    throw new Error(uploadErrorMessage(error, uploadLimitMb));
+    throw normalizeUploadError(error, uploadLimitMb);
   } finally {
     window.clearTimeout(timeout);
   }
