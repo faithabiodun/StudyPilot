@@ -119,37 +119,3 @@ Retrieved PDF context:
         return generate_json_with_deepseek(prompt, system_prompt="Return only strict JSON for StudyPilot MCQ quizzes.", max_output_tokens=7000)
     except AIServiceError as exc:
         raise AIGenerationError(str(exc)) from exc
-
-
-def generate_youtube_docx_content_with_ai(transcript, video_metadata, document_options=None):
-    document_options = document_options or {}
-    title = video_metadata.get("title") or "YouTube Lecture"
-    channel = video_metadata.get("channel") or "Unknown channel"
-    text = limit_study_text(transcript, limit=30000)
-    prompt = f"""
-Create a structured study document from the YouTube lecture transcript and metadata below.
-Use only the transcript and metadata. Do not invent unrelated facts.
-Do not copy the transcript word for word.
-Return clean markdown-style text with headings, bullets, numbered lists, and tables where useful.
-
-Video title: {title}
-Channel: {channel}
-Detail level: {document_options.get("detail_level", "comprehensive")}
-Document style: {document_options.get("document_style", "study_guide")}
-Custom instruction: {limit_study_text(document_options.get("custom_instruction", ""), limit=300) or "None"}
-
-Required sections:
-Introduction, Learning Objectives, Main Study Notes, Key Concepts, Definitions, Important Takeaways,
-Summary, Revision Questions, MCQs with Answers, Short Answer Questions, Glossary, Final Study Checklist.
-
-Transcript:
-{text}
-"""
-    try:
-        return generate_text_with_deepseek(
-            prompt,
-            system_prompt="You create rigorous StudyPilot academic study documents from lecture transcripts.",
-            max_output_tokens=12000,
-        )
-    except AIServiceError as exc:
-        raise AIGenerationError(str(exc)) from exc

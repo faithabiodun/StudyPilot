@@ -24,7 +24,6 @@ export const navItems = [
   { label: "PDF Study Converter", path: "/student/pdf-studio", icon: UploadCloud },
   { label: "Resource Hub", path: "/student/resource-hub", icon: Library },
   { label: "AI Advisor", path: "/student/ai-advisor", icon: Bot },
-  { label: "YouTube to DOCX", path: "/student/youtube-to-docx", icon: Youtube },
   { label: "Profile", path: "/student/profile", icon: UserRound }
 ];
 
@@ -55,12 +54,6 @@ export const features = [
     description: "Upload one PDF and generate flashcards, MCQs, and mixed quizzes from extracted text."
   },
   {
-    title: "YouTube to DOCX",
-    icon: Youtube,
-    path: "/youtube-to-docx",
-    description: "Paste a YouTube lecture link and turn it into structured study notes you can download as a DOCX file."
-  },
-  {
     title: "Resource Hub",
     icon: Library,
     path: "/resource-hub",
@@ -89,7 +82,7 @@ export const howItWorks = [
   {
     title: "Ask, Generate, And Explore",
     icon: Search,
-    description: "StudyPilot answers questions, creates quizzes, builds flashcards, converts lectures to DOCX, and finds resources."
+    description: "StudyPilot answers questions, creates quizzes, builds flashcards, and finds resources."
   },
   {
     title: "Study Smarter",
@@ -121,8 +114,7 @@ export const courses = [
 export const actionCards = [
   { title: "PDF Study Converter", text: "Upload a PDF and generate flashcards, MCQs, or mixed quizzes.", icon: UploadCloud, path: "/student/pdf-studio" },
   { title: "AI Advisor", text: "Ask questions about courses, policies, and study plans.", icon: Bot, path: "/student/ai-advisor" },
-  { title: "Resource Hub", text: "Find study materials for your courses.", icon: Library, path: "/student/resource-hub" },
-  { title: "YouTube to DOCX", text: "Turn a YouTube lecture into a clean downloadable study document.", icon: Youtube, path: "/student/youtube-to-docx" }
+  { title: "Resource Hub", text: "Find study materials for your courses.", icon: Library, path: "/student/resource-hub" }
 ];
 
 export const recentActivity = [

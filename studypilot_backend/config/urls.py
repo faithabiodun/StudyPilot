@@ -54,8 +54,6 @@ class DeploymentHealthView(APIView):
                 "debug": settings.DEBUG,
                 "database": "connected" if database_connected else "unavailable",
                 "deepseek_configured": bool(settings.DEEPSEEK_API_KEY),
-                "audio_transcription_enabled": settings.ENABLE_AUDIO_TRANSCRIPTION,
-                "youtube_docx_temp_dir": str(settings.YOUTUBE_DOCX_TEMP_DIR),
                 "pdf_temp_dir": str(settings.PDF_TEMP_DIR),
                 "upload_limit_mb": settings.MAX_UPLOAD_SIZE // (1024 * 1024),
             }
@@ -77,7 +75,6 @@ urlpatterns = [
     path("api/quizzes/", include("apps.quizzes.urls")),
     path("api/resources/", include("apps.resources.urls")),
     path("api/advisor/", include("apps.advisor.urls")),
-    path("api/youtube-docx/", include("apps.youtube_docx.urls")),
     path("api/dashboard/", include("apps.dashboard.urls")),
     path("api/activity/heartbeat/", HeartbeatView.as_view(), name="activity_heartbeat"),
     path("api/admin/", include("apps.dashboard.admin_urls")),
