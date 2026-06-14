@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { ClipboardList, FileQuestion, FileText, Layers, Lock, RotateCcw, Sparkles, X } from "lucide-react";
+import { ClipboardList, FileQuestion, FileText, Layers, Lock, Sparkles, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Button from "../../components/common/Button";
 import DashboardCard from "../../components/common/DashboardCard";
 import Select from "../../components/common/Select";
+import StudyResultPanel from "../../components/common/StudyResultPanel";
 import PageHeader from "../../components/layout/PageHeader";
 import UploadBox from "../../components/upload/UploadBox";
 import { generateFlashcards } from "../../services/flashcardService";
@@ -48,223 +49,10 @@ const questionTypes = [
   { label: "Theory", value: "theory" }
 ];
 
-function normalizeQuestionText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/^\s*(q(?:uestion)?\s*)?\d+[\).:-]\s*/i, "")
-    .replace(/^\s*\d+[\).:-]\s*/, "")
-    .replace(/[^\w\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isNearDuplicate(normalized, seen) {
-  if (!normalized) return true;
-  return seen.some((item) => {
-    if (item === normalized) return true;
-    const longer = Math.max(item.length, normalized.length) || 1;
-    let matches = 0;
-    for (let index = 0; index < Math.min(item.length, normalized.length); index += 1) {
-      if (item[index] === normalized[index]) matches += 1;
-    }
-    return matches / longer > 0.9;
-  });
-}
-
-function dedupeOptions(options = []) {
-  const seen = new Set();
-  const unique = [];
-  options.forEach((option) => {
-    const text = option?.option_text || "";
-    const normalized = normalizeQuestionText(text);
-    if (!text || seen.has(normalized)) return;
-    unique.push(option);
-    seen.add(normalized);
-  });
-  return unique;
-}
-
-function dedupeCards(cards = []) {
-  const seen = [];
-  return cards.filter((card) => {
-    const normalized = normalizeQuestionText(card?.question);
-    if (isNearDuplicate(normalized, seen)) return false;
-    seen.push(normalized);
-    return true;
-  });
-}
-
-function dedupeQuestions(questions = []) {
-  const seen = [];
-  return questions.filter((question) => {
-    const normalized = normalizeQuestionText(question?.question);
-    if (isNearDuplicate(normalized, seen)) return false;
-    question.options = dedupeOptions(question.options || []);
-    seen.push(normalized);
-    return true;
-  });
-}
-
 function StatusMessage({ message, tone = "blue" }) {
   if (!message) return null;
   const classes = tone === "red" ? "border-red-100 bg-red-50 text-red-700" : "border-blue-100 bg-pilot-soft text-pilot-blue";
   return <p className={`mt-4 rounded-2xl border px-4 py-3 text-sm font-bold ${classes}`}>{message}</p>;
-}
-
-function ModalResultPanel({ result, onClose }) {
-  const [flipped, setFlipped] = useState(false);
-  const [answers, setAnswers] = useState({});
-  const [revealed, setRevealed] = useState({});
-  const [cardIndex, setCardIndex] = useState(0);
-  useEffect(() => {
-    setFlipped(false);
-    setAnswers({});
-    setRevealed({});
-    setCardIndex(0);
-  }, [result]);
-  if (!result) return null;
-  const payload = result.data || result;
-  const cards = dedupeCards(payload.cards || []);
-  const questions = dedupeQuestions(payload.questions || []);
-  const activeCard = cards[cardIndex] || null;
-  const questionKey = (question, index) => question.id || `${question.question}-${index}`;
-  const objectiveEntries = questions
-    .map((question, index) => ({ question, index }))
-    .filter(({ question }) => {
-    const hasOptions = question.options?.length || question.question_type === "true_false";
-    return Boolean(hasOptions);
-  });
-  const correctCount = objectiveEntries.reduce((total, { question, index }) => {
-    const key = questionKey(question, index);
-    return total + (answers[key] && answers[key] === question.correct_answer ? 1 : 0);
-  }, 0);
-  const answeredObjective = objectiveEntries.reduce((total, { question, index }) => {
-    const key = questionKey(question, index);
-    return total + (answers[key] ? 1 : 0);
-  }, 0);
-  const objectiveTotal = objectiveEntries.length;
-  const quizComplete = objectiveTotal > 0 && answeredObjective === objectiveTotal;
-  const subjectiveTotal = questions.length - objectiveTotal;
-  const revealedSubjective = questions.reduce((total, question, index) => {
-    const hasOptions = question.options?.length || question.question_type === "true_false";
-    return total + (!hasOptions && revealed[`reveal-${questionKey(question, index)}`] ? 1 : 0);
-  }, 0);
-
-  return (
-    <div className="mt-5 space-y-4">
-        {activeCard && (() => {
-          const key = activeCard.id || `${activeCard.question}-${cardIndex}`;
-          return (
-            <div key={key}>
-              <button
-                onClick={() => setFlipped((current) => !current)}
-                className="min-h-[190px] w-full rounded-2xl border border-pilot-line bg-pilot-ice p-5 text-left transition hover:-translate-y-0.5 hover:border-pilot-blue hover:shadow-soft"
-              >
-                <p className="text-xs font-black uppercase tracking-[0.14em] text-pilot-blue">{flipped ? "Answer" : "Question"} {cardIndex + 1} of {cards.length}</p>
-                <p className="mt-3 text-base font-black leading-7 text-pilot-ink">{flipped ? activeCard.answer : activeCard.question}</p>
-                <p className="mt-4 text-sm font-bold text-pilot-muted">Click card to {flipped ? "show question" : "reveal answer"}</p>
-              </button>
-              <div className="mt-3 flex justify-between gap-3">
-                <Button variant="secondary" disabled={cardIndex === 0} onClick={() => { setFlipped(false); setCardIndex((index) => Math.max(0, index - 1)); }}>Previous</Button>
-                <Button variant="secondary" disabled={cardIndex >= cards.length - 1} onClick={() => { setFlipped(false); setCardIndex((index) => Math.min(cards.length - 1, index + 1)); }}>Next</Button>
-              </div>
-            </div>
-          );
-        })()}
-        {questions.map((question, index) => {
-          const key = questionKey(question, index);
-          const selected = answers[key];
-          const correct = question.correct_answer;
-          const trueFalseOptions = question.question_type === "true_false" && !question.options?.length
-            ? [{ option_text: "True", is_correct: correct?.toLowerCase() === "true" }, { option_text: "False", is_correct: correct?.toLowerCase() === "false" }]
-            : [];
-          const options = question.options?.length ? question.options : trueFalseOptions;
-          const revealKey = `reveal-${key}`;
-          return (
-            <div key={key} className="rounded-2xl border border-pilot-line bg-pilot-ice p-4">
-              <p className="inline-flex rounded-full bg-pilot-soft px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-pilot-blue">{question.question_type}</p>
-              <p className="mt-3 font-black leading-7 text-pilot-ink">{question.question}</p>
-              {!!options.length && (
-                <div className="mt-3 grid gap-2 md:grid-cols-2">
-                  {options.map((option) => {
-                    const isSelected = selected === option.option_text;
-                    const showCorrect = selected && option.is_correct;
-                    const showWrong = selected && isSelected && !option.is_correct;
-                    return (
-                      <button
-                        key={option.id || option.option_text}
-                        disabled={!!selected}
-                        onClick={() => {
-                          if (selected) return;
-                          setAnswers((current) => ({ ...current, [key]: option.option_text }));
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-left text-sm font-bold transition ${
-                          showCorrect
-                            ? "border-green-200 bg-green-50 text-green-700"
-                            : showWrong
-                              ? "border-red-200 bg-red-50 text-red-700"
-                            : isSelected
-                              ? "border-pilot-blue bg-pilot-soft text-pilot-blue"
-                              : "border-pilot-line bg-white text-pilot-muted hover:border-pilot-blue"
-                        } disabled:cursor-default`}
-                      >
-                        {option.option_text}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {!!options.length && selected && correct && <p className="mt-3 text-sm font-bold text-green-700">Correct answer: {correct}</p>}
-              {!options.length && (
-                <Button variant="secondary" className="mt-3" onClick={() => setRevealed((current) => ({ ...current, [revealKey]: !current[revealKey] }))}>
-                  {revealed[revealKey] ? "Hide suggested answer" : "Reveal suggested answer"}
-                </Button>
-              )}
-              {(selected || revealed[revealKey]) && (question.explanation || correct) && (
-                <p className="mt-3 text-sm leading-6 text-pilot-muted">{!options.length && correct ? `Suggested answer: ${correct}. ` : ""}{question.explanation}</p>
-              )}
-            </div>
-          );
-        })}
-        {!!objectiveTotal && (
-          <div className="sticky bottom-0 rounded-2xl border border-blue-100 bg-white/95 p-4 shadow-soft backdrop-blur">
-            {quizComplete ? (
-              <>
-                <p className="text-sm font-black text-pilot-ink">Final score: {correctCount} / {objectiveTotal}</p>
-                {!!subjectiveTotal && <p className="mt-1 text-xs font-bold text-pilot-muted">Suggested answers revealed for {revealedSubjective} of {subjectiveTotal} short answer/theory questions.</p>}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    icon={RotateCcw}
-                    onClick={() => {
-                      setAnswers({});
-                      setRevealed({});
-                    }}
-                  >
-                    Retry Quiz
-                  </Button>
-                  <Button onClick={onClose}>Close</Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="text-sm font-black text-pilot-ink">Answered {answeredObjective} of {objectiveTotal} objective questions.</p>
-                <p className="mt-1 text-xs font-bold text-pilot-muted">Final score appears after every objective question is answered.</p>
-              </>
-            )}
-          </div>
-        )}
-        {!objectiveTotal && !!subjectiveTotal && (
-          <div className="sticky bottom-0 rounded-2xl border border-blue-100 bg-white/95 p-4 shadow-soft backdrop-blur">
-            <p className="text-sm font-black text-pilot-ink">Completed {revealedSubjective} of {subjectiveTotal} suggested answers.</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="secondary" icon={RotateCcw} onClick={() => setRevealed({})}>Reset</Button>
-              <Button onClick={onClose}>Close</Button>
-            </div>
-          </div>
-        )}
-      </div>
-  );
 }
 
 function SetupPanel({ selectedTool, setup, setSetup, loadingAction, onGenerate, result }) {
@@ -396,7 +184,7 @@ function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error
           {error && <StatusMessage message={error} tone="red" />}
           {loadingAction === selectedTool && <StatusMessage message={config.loading} />}
           {!result && <SetupPanel selectedTool={selectedTool} setup={setup} setSetup={setSetup} loadingAction={loadingAction} onGenerate={onGenerate} result={result} />}
-          {result && <ModalResultPanel result={result} onClose={onClose} />}
+          {result && <div className="mt-2"><StudyResultPanel result={result} onClose={onClose} /></div>}
         </div>
       </section>
     </div>

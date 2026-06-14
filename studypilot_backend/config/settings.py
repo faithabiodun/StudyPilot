@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "apps.documents.apps.DocumentsConfig",
     "apps.flashcards.apps.FlashcardsConfig",
     "apps.quizzes.apps.QuizzesConfig",
+    "apps.youtube_docx.apps.YoutubeDocxConfig",
     "apps.resources.apps.ResourcesConfig",
     "apps.advisor.apps.AdvisorConfig",
     "apps.dashboard.apps.DashboardConfig",

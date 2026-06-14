@@ -101,3 +101,63 @@ textarea {
     translate: 0 -6px;
   }
 }
+
+/* 3D flashcard flip */
+.flip-scene {
+  perspective: 1600px;
+}
+
+.flip-card {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.flip-card.is-flipped {
+  transform: rotateY(180deg);
+}
+
+.flip-face {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.flip-face-back {
+  transform: rotateY(180deg);
+}
+
+@keyframes pilotPopIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pilot-pop {
+  animation: pilotPopIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pilotShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  75% {
+    transform: translateX(4px);
+  }
+}
+
+.pilot-shake {
+  animation: pilotShake 0.32s ease-in-out;
+}

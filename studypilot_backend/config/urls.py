@@ -100,6 +100,7 @@ urlpatterns = [
     path("api/documents/", include("apps.documents.urls")),
     path("api/flashcards/", include("apps.flashcards.urls")),
     path("api/quizzes/", include("apps.quizzes.urls")),
+    path("api/youtube/", include("apps.youtube_docx.urls")),
     path("api/resources/", include("apps.resources.urls")),
     path("api/advisor/", include("apps.advisor.urls")),
     path("api/dashboard/", include("apps.dashboard.urls")),

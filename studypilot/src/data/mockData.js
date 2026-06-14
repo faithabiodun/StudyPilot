@@ -22,6 +22,7 @@ import {
 export const navItems = [
   { label: "Dashboard", path: "/student/dashboard", icon: Home },
   { label: "PDF Study Converter", path: "/student/pdf-studio", icon: UploadCloud },
+  { label: "YouTube Converter", path: "/student/youtube-to-docx", icon: Youtube },
   { label: "Resource Hub", path: "/student/resource-hub", icon: Library },
   { label: "AI Advisor", path: "/student/ai-advisor", icon: Bot },
   { label: "Profile", path: "/student/profile", icon: UserRound }

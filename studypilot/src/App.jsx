@@ -10,6 +10,7 @@ import AuthCallbackPage from "./pages/auth/AuthCallbackPage";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import AIAdvisorPage from "./pages/student/AIAdvisorPage";
 import PDFStudioPage from "./pages/student/PDFStudioPage";
+import YouTubeStudioPage from "./pages/student/YouTubeStudioPage";
 import ResourceHubPage from "./pages/student/ResourceHubPage";
 import ProfilePage from "./pages/student/ProfilePage";
 import OnboardingPage from "./pages/student/OnboardingPage";
@@ -29,7 +30,7 @@ export default function App() {
       <Route path="/flashcards" element={<Navigate to="/pdf-studio" replace />} />
       <Route path="/quiz-lab" element={<Navigate to="/pdf-studio" replace />} />
       <Route path="/resource-hub" element={<Navigate to="/student/resource-hub" replace />} />
-      <Route path="/youtube-to-docx" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/youtube-to-docx" element={<Navigate to="/student/youtube-to-docx" replace />} />
       <Route path="/saved-library" element={<Navigate to="/dashboard" replace />} />
       <Route path="/profile" element={<Navigate to="/student/profile" replace />} />
       <Route path="/settings" element={<Navigate to="/profile" replace />} />
@@ -51,7 +52,7 @@ export default function App() {
           <Route path="flashcards" element={<Navigate to="/student/pdf-studio" replace />} />
           <Route path="quiz-lab" element={<Navigate to="/student/pdf-studio" replace />} />
           <Route path="resource-hub" element={<ResourceHubPage />} />
-          <Route path="youtube-to-docx" element={<Navigate to="/student/dashboard" replace />} />
+          <Route path="youtube-to-docx" element={<YouTubeStudioPage />} />
           <Route path="saved-library" element={<Navigate to="/student/dashboard" replace />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<Navigate to="/student/profile" replace />} />
