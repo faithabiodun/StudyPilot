@@ -1,4 +1,4 @@
-import { apiRequest } from "./api";
+import { apiRequest, refreshAccessToken } from "./api";
 
 export const MAX_PDF_UPLOAD_MB = Number(import.meta.env.VITE_MAX_PDF_UPLOAD_MB || 50);
 const UPLOAD_TIMEOUT_MS = 180000;
@@ -53,13 +53,28 @@ export async function uploadMaterial({ file, title, maxPdfUploadMb = MAX_PDF_UPL
     const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
     throw new Error(`This PDF is ${sizeMb}MB. StudyPilot can process PDFs up to ${uploadLimitMb}MB. Please upload a smaller or compressed PDF.`);
   }
-  const formData = new FormData();
-  formData.append("file", file);
-  if (title) formData.append("title", title);
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  // FormData is a one-shot stream, so apiRequest cannot auto-retry it. We build
+  // a fresh FormData per attempt and refresh the token ourselves on a 401.
+  const buildForm = () => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (title) formData.append("title", title);
+    return formData;
+  };
   try {
-    return await apiRequest("/documents/upload/", { method: "POST", body: formData, signal: controller.signal });
+    try {
+      return await apiRequest("/documents/upload/", { method: "POST", body: buildForm(), signal: controller.signal });
+    } catch (error) {
+      if (error?.status === 401 && localStorage.getItem("studypilot_refresh_token")) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          return await apiRequest("/documents/upload/", { method: "POST", body: buildForm(), signal: controller.signal });
+        }
+      }
+      throw error;
+    }
   } catch (error) {
     throw normalizeUploadError(error, uploadLimitMb);
   } finally {

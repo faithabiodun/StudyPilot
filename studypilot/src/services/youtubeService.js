@@ -1,4 +1,4 @@
-import { API_BASE_URL, apiRequest } from "./api";
+import { API_BASE_URL, apiRequest, refreshAccessToken } from "./api";
 
 const GENERATION_TIMEOUT_MS = 180000;
 
@@ -59,11 +59,11 @@ export async function downloadYoutubeDocx(payload) {
   if (!API_BASE_URL) {
     throw new Error("StudyPilot API URL is not configured.");
   }
-  const token = localStorage.getItem("studypilot_access_token");
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
-  try {
-    const response = await fetch(`${API_BASE_URL}/youtube/docx/`, {
+
+  const sendDocx = (token) =>
+    fetch(`${API_BASE_URL}/youtube/docx/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -72,6 +72,17 @@ export async function downloadYoutubeDocx(payload) {
       body: JSON.stringify(payload),
       signal: controller.signal
     });
+
+  try {
+    let response = await sendDocx(localStorage.getItem("studypilot_access_token"));
+
+    // Access token expired: refresh once and retry before giving up.
+    if (response.status === 401 && localStorage.getItem("studypilot_refresh_token")) {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        response = await sendDocx(newToken);
+      }
+    }
 
     if (!response.ok) {
       let message = `Request failed with ${response.status}`;

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, GraduationCap, Sparkles } from "lucide-react";
+import { ArrowRight, GraduationCap } from "lucide-react";
 import Button from "../../components/common/Button";
 import FloatingFileCard from "../../components/common/FloatingFileCard";
 import LogoMark from "../../components/common/LogoMark";
@@ -106,11 +106,7 @@ export default function LandingPage() {
               />
             ))}
             <div data-safe-content className="relative z-20 mx-auto max-w-[760px] text-center">
-              <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-pilot-line bg-white px-4 py-2 text-sm font-black text-pilot-blue shadow-soft">
-                <Sparkles size={16} />
-                Meet Your Academic AI
-              </div>
-              <h1 className="mt-8 text-5xl font-black leading-[1.04] tracking-tight text-pilot-ink md:text-7xl">
+              <h1 className="text-5xl font-black leading-[1.04] tracking-tight text-pilot-ink md:text-7xl">
                 Your <span className="inline-flex rounded-[1.25rem] bg-pilot-blue px-4 py-1 text-white shadow-glow">Always On</span> Academic Co Pilot
               </h1>
               <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-pilot-muted md:text-lg">
