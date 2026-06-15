@@ -62,16 +62,31 @@ export async function downloadYoutubeDocx(payload) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
 
-  const sendDocx = (token) =>
-    fetch(`${API_BASE_URL}/youtube/docx/`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
+  // Retry connection-level failures so a Render cold start (sleeping
+  // backend) doesn't fail the download outright. JSON body is reusable.
+  const sendDocx = async (token) => {
+    let lastError;
+    for (let attempt = 0; attempt <= 2; attempt += 1) {
+      try {
+        return await fetch(`${API_BASE_URL}/youtube/docx/`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") throw error;
+        const networkFailure = error instanceof TypeError || error?.message === "Failed to fetch";
+        if (!networkFailure || attempt === 2) throw error;
+        lastError = error;
+        await new Promise((resolve) => setTimeout(resolve, 2500 * (attempt + 1)));
+      }
+    }
+    throw lastError;
+  };
 
   try {
     let response = await sendDocx(localStorage.getItem("studypilot_access_token"));
