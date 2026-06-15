@@ -44,23 +44,22 @@ class DashboardSummaryView(APIView):
 
         today = timezone.localdate()
         start_date = today - timedelta(days=6)
-        session_rows = {
-            item.session_date: item.duration_seconds
-            for item in UserSessionActivity.objects.filter(user=user, session_date__gte=start_date, session_date__lte=today)
-        }
-        progress_by_day = {}
+        session_seconds = {}
+        for item in UserSessionActivity.objects.filter(
+            user=user, session_date__gte=start_date, session_date__lte=today
+        ):
+            # Multiple sessions can exist for one day; sum them.
+            session_seconds[item.session_date] = session_seconds.get(item.session_date, 0) + item.duration_seconds
+        # Always seven bars in real chronological order (oldest -> today),
+        # each labelled with its own weekday so the chart reads left-to-right.
+        study_progress = []
         for offset in range(7):
             day = start_date + timedelta(days=offset)
-            seconds = session_rows.get(day, 0)
-            progress_by_day[day.weekday()] = {
+            study_progress.append({
                 "date": day.isoformat(),
                 "day": day.strftime("%a"),
-                "hours": round(seconds / 3600, 2),
-            }
-        study_progress = [
-            progress_by_day.get(index, {"day": label, "hours": 0})
-            for index, label in enumerate(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])
-        ]
+                "hours": round(session_seconds.get(day, 0) / 3600, 2),
+            })
 
         recommendations = [
             {

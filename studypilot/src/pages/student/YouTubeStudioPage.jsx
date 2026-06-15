@@ -398,7 +398,7 @@ export default function YouTubeStudioPage() {
     <div>
       <PageHeader
         title="YouTube Converter"
-        subtitle="Paste a YouTube lecture link, then turn it into Word study notes, flashcards, or a quiz — no download needed."
+        subtitle="Paste a YouTube lecture link, then turn it into Word study notes, flashcards, or a quiz."
       />
 
       <DashboardCard>

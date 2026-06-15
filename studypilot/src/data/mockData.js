@@ -55,6 +55,12 @@ export const features = [
     description: "Upload one PDF and generate flashcards, MCQs, and mixed quizzes from extracted text."
   },
   {
+    title: "YouTube Converter",
+    icon: Youtube,
+    path: "/youtube-to-docx",
+    description: "Paste a lecture link to get a Word study document, flashcards, MCQs, or a mixed quiz."
+  },
+  {
     title: "Resource Hub",
     icon: Library,
     path: "/resource-hub",
@@ -114,6 +120,7 @@ export const courses = [
 
 export const actionCards = [
   { title: "PDF Study Converter", text: "Upload a PDF and generate flashcards, MCQs, or mixed quizzes.", icon: UploadCloud, path: "/student/pdf-studio" },
+  { title: "YouTube Converter", text: "Turn a lecture link into a DOCX, flashcards, or a quiz.", icon: Youtube, path: "/student/youtube-to-docx" },
   { title: "AI Advisor", text: "Ask questions about courses, policies, and study plans.", icon: Bot, path: "/student/ai-advisor" },
   { title: "Resource Hub", text: "Find study materials for your courses.", icon: Library, path: "/student/resource-hub" }
 ];

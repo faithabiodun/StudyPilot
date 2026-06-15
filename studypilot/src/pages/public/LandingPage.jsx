@@ -16,7 +16,7 @@ function DashboardPreview() {
             StudyPilot
           </div>
           <div className="mt-8 space-y-2">
-            {["Dashboard", "PDF Study Converter", "Resource Hub", "AI Advisor", "Profile"].map((item, index) => (
+            {["Dashboard", "PDF Study Converter", "YouTube Converter", "Resource Hub", "AI Advisor", "Profile"].map((item, index) => (
               <div key={item} className={`rounded-xl px-3 py-2 text-xs font-bold ${index === 0 ? "bg-white text-pilot-blue" : "text-blue-100"}`}>
                 {item}
               </div>

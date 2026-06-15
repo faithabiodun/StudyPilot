@@ -60,11 +60,22 @@ export default function StudentDashboard() {
     { label: "Generated Outputs", value: summary?.generated_outputs ?? 0, icon: statIcons.generated_outputs }
   ], [summary, courses.length]);
 
-  const fallbackProgress = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => ({ day, hours: 0 }));
+  // Last 7 days in chronological order (oldest -> today) so the empty-state
+  // chart matches the real data shape the backend returns.
+  const fallbackProgress = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    return { day: date.toLocaleDateString("en-US", { weekday: "short" }), hours: 0 };
+  });
   const studyProgress = (summary?.study_progress?.length ? summary.study_progress : fallbackProgress).map((item) => ({
     ...item,
     hours: Number(item.hours || 0)
   }));
+  // Round the axis up to a clean whole number so the bars never touch the top
+  // and an all-zero week still shows a tidy 0-2h scale instead of a flat line.
+  const peakHours = studyProgress.reduce((max, item) => Math.max(max, item.hours), 0);
+  const chartMax = Math.max(2, Math.ceil(peakHours + 0.5));
+  const totalHours = studyProgress.reduce((sum, item) => sum + item.hours, 0);
   const recentActivity = (summary?.recent_activity || []).slice(0, 5);
   const recommendedResources = summary?.recommended_resources || [];
 
@@ -80,13 +91,18 @@ export default function StudentDashboard() {
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_0.7fr]">
         <DashboardCard title="Study Progress">
-          <p className="mt-1 text-sm text-pilot-muted">Hours spent on StudyPilot in the last 7 days</p>
+          <div className="mt-1 flex items-baseline justify-between gap-3">
+            <p className="text-sm text-pilot-muted">Hours spent on StudyPilot in the last 7 days</p>
+            <p className="shrink-0 text-sm font-black text-pilot-blue">{totalHours.toFixed(1)}h total</p>
+          </div>
           <div className="mt-6 h-72 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={studyProgress} margin={{ top: 12, right: 8, left: -18, bottom: 0 }}>
+              <BarChart data={studyProgress} margin={{ top: 12, right: 8, left: -18, bottom: 0 }} barCategoryGap="22%">
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#dbeafe" />
-                <XAxis dataKey="day" tickLine={false} axisLine={false} tick={{ fill: "#64748b", fontSize: 12, fontWeight: 700 }} />
+                <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} tick={{ fill: "#64748b", fontSize: 12, fontWeight: 700 }} />
                 <YAxis
+                  domain={[0, chartMax]}
+                  allowDecimals={false}
                   tickLine={false}
                   axisLine={false}
                   tick={{ fill: "#64748b", fontSize: 12, fontWeight: 700 }}
@@ -95,11 +111,16 @@ export default function StudentDashboard() {
                 />
                 <Tooltip
                   cursor={{ fill: "rgba(37, 99, 235, 0.08)" }}
-                  formatter={(value) => [`${Number(value).toFixed(2)}h`, "Hours"]}
+                  formatter={(value) => [`${Number(value).toFixed(2)}h`, "Studied"]}
+                  labelFormatter={(label, payload) => {
+                    const date = payload?.[0]?.payload?.date;
+                    if (!date) return label;
+                    return new Date(date).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+                  }}
                   labelStyle={{ color: "#0f172a", fontWeight: 800 }}
                   contentStyle={{ borderRadius: 14, borderColor: "#dbeafe", boxShadow: "0 14px 40px rgba(15, 23, 42, 0.12)" }}
                 />
-                <Bar dataKey="hours" fill="#2563eb" radius={[12, 12, 0, 0]} maxBarSize={56} />
+                <Bar dataKey="hours" fill="#2563eb" radius={[10, 10, 0, 0]} maxBarSize={48} />
               </BarChart>
             </ResponsiveContainer>
           </div>
