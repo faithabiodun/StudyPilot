@@ -106,7 +106,7 @@ export async function deleteAccount() {
 
 export async function signInWithGoogle() {
   if (!isSupabaseConfigured || !supabase) {
-    throw new Error("Supabase Auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+    throw new Error("Google sign in is not available right now. Please use your email and password.");
   }
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",

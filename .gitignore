@@ -1,8 +1,10 @@
 .env
 .env.*
-!.env.example
 .env.local
+.env.example
+*/.env.example
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
@@ -24,3 +26,16 @@ out/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+credentials.json
+service-account*.json
+secrets.json
+
+# Editor and OS
+.idea/
+.vscode/
+Thumbs.db

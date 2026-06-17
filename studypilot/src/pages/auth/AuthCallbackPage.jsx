@@ -17,7 +17,7 @@ export default function AuthCallbackPage() {
     async function finishLogin() {
       try {
         if (!isSupabaseConfigured || !supabase) {
-          throw new Error("Supabase Auth is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+          throw new Error("Google sign in is not available right now. Please use your email and password.");
         }
         const { data, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) throw sessionError;
@@ -62,7 +62,7 @@ export default function AuthCallbackPage() {
         {!error && (
           <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-bold text-pilot-blue">
             <CheckCircle size={16} />
-            Secure Supabase Auth bridge
+            Secure sign in
           </div>
         )}
         {error && (
