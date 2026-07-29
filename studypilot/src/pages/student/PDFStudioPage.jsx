@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import Button from "../../components/common/Button";
 import DashboardCard from "../../components/common/DashboardCard";
 import Select from "../../components/common/Select";
+import StagedProgress from "../../components/common/StagedProgress";
 import StudyResultPanel from "../../components/common/StudyResultPanel";
 import PageHeader from "../../components/layout/PageHeader";
 import UploadBox from "../../components/upload/UploadBox";
@@ -40,6 +41,20 @@ const toolConfig = {
     success: "Mixed quiz generated successfully."
   }
 };
+
+// Rough timings for a typical PDF. They only pace the progress display; the
+// final phase holds until the real response lands.
+const uploadSteps = [
+  { label: "Uploading your PDF...", short: "Upload", seconds: 4 },
+  { label: "Extracting readable text...", short: "Extract", seconds: 5 },
+  { label: "Saving your study material...", short: "Save", seconds: 3 }
+];
+
+const generationSteps = [
+  { label: "Reading your study material...", short: "Read", seconds: 3 },
+  { label: "Asking the AI to build your questions...", short: "Generate", seconds: 14 },
+  { label: "Checking and formatting the results...", short: "Polish", seconds: 6 }
+];
 
 const countOptions = [10, 20, 30];
 const questionTypes = [
@@ -182,7 +197,9 @@ function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error
         </header>
         <div className="max-h-[calc(90vh-110px)] overflow-y-auto p-5">
           {error && <StatusMessage message={error} tone="red" />}
-          {loadingAction === selectedTool && <StatusMessage message={config.loading} />}
+          {loadingAction === selectedTool && (
+            <StagedProgress steps={generationSteps} note="Generation usually takes 10 to 30 seconds." />
+          )}
           {!result && <SetupPanel selectedTool={selectedTool} setup={setup} setSetup={setSetup} loadingAction={loadingAction} onGenerate={onGenerate} result={result} />}
           {result && <div className="mt-2"><StudyResultPanel result={result} onClose={onClose} /></div>}
         </div>
@@ -305,7 +322,11 @@ export default function PDFStudioPage() {
       <PageHeader title="PDF Study Converter" subtitle="Upload one readable PDF, extract its text, delete the file, then generate study tools from the saved content." />
       <DashboardCard>
         <UploadBox fileName={latestFile || activeDocument?.original_filename} onFile={addFile} uploadLimitMb={uploadLimitMb} />
-        <StatusMessage message={loadingAction === "upload" ? "Extracting readable text from your PDF..." : status} />
+        {loadingAction === "upload" ? (
+          <StagedProgress steps={uploadSteps} note="Larger PDFs take longer to read." />
+        ) : (
+          <StatusMessage message={status} />
+        )}
         <StatusMessage message={error} tone="red" />
       </DashboardCard>
 

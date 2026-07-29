@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import Button from "../../components/common/Button";
 import DashboardCard from "../../components/common/DashboardCard";
 import Select from "../../components/common/Select";
+import StagedProgress from "../../components/common/StagedProgress";
 import StudyResultPanel from "../../components/common/StudyResultPanel";
 import PageHeader from "../../components/layout/PageHeader";
 import {
@@ -64,6 +65,22 @@ const toolConfig = {
     success: "Mixed quiz generated successfully."
   }
 };
+
+// YouTube runs have an extra transcript step before the AI work. These pace
+// the progress display only; the last phase holds until the response lands.
+const transcriptStep = { label: "Fetching the video transcript...", short: "Transcript", seconds: 8 };
+
+const youtubeGenerationSteps = [
+  transcriptStep,
+  { label: "Asking the AI to build your questions...", short: "Generate", seconds: 16 },
+  { label: "Checking and formatting the results...", short: "Polish", seconds: 6 }
+];
+
+const youtubeDocxSteps = [
+  transcriptStep,
+  { label: "Writing your study notes...", short: "Write", seconds: 18 },
+  { label: "Building the Word document...", short: "Document", seconds: 8 }
+];
 
 const countOptions = [10, 20, 30];
 const questionTypes = [
@@ -272,7 +289,12 @@ function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error
         </header>
         <div className="max-h-[calc(90vh-110px)] overflow-y-auto p-5">
           {error && <StatusMessage message={error} tone="red" />}
-          {loadingAction === selectedTool && <StatusMessage message={config.loading} />}
+          {loadingAction === selectedTool && (
+            <StagedProgress
+              steps={selectedTool === "docx" ? youtubeDocxSteps : youtubeGenerationSteps}
+              note="Longer videos take longer to process."
+            />
+          )}
           {!result && status && !error && loadingAction !== selectedTool && (
             <StatusMessage message={status} tone="green" />
           )}
