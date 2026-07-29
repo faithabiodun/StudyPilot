@@ -95,7 +95,11 @@ def extract_pdf_text(file_path):
             if actual_focus_end < focus_end:
                 extraction_limited = True
             for index in range(focus_start, actual_focus_end):
-                focused_parts.append(document[index].get_text())
+                # Reuse pages already extracted above instead of re-reading them.
+                if index < len(text_parts):
+                    focused_parts.append(text_parts[index])
+                else:
+                    focused_parts.append(document[index].get_text())
         text = clean_extracted_text("\n".join(text_parts))
         focused_text = clean_extracted_text("\n".join(focused_parts))
         if len(text) > max_chars:
@@ -141,7 +145,11 @@ def extract_pdf_text(file_path):
             if actual_focus_end < focus_end:
                 extraction_limited = True
             for index in range(focus_start, actual_focus_end):
-                focused_parts.append(pdf.pages[index].extract_text() or "")
+                # Reuse pages already extracted above instead of re-reading them.
+                if index < len(text_parts):
+                    focused_parts.append(text_parts[index])
+                else:
+                    focused_parts.append(pdf.pages[index].extract_text() or "")
         text = clean_extracted_text("\n".join(text_parts))
         focused_text = clean_extracted_text("\n".join(focused_parts))
         if len(text) > max_chars:

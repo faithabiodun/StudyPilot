@@ -3,6 +3,7 @@ import logging
 import time
 
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -128,10 +129,18 @@ class DocumentUploadView(APIView):
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE if has_large_file_error else status.HTTP_400_BAD_REQUEST,
             )
 
-        for stale_document in Document.objects.filter(user=request.user).exclude(file=""):
-            if stale_document.file:
-                delete_document_file(stale_document)
-                stale_document.save(update_fields=["file", "updated_at"])
+        # Clear leftover temp files in one UPDATE instead of a save() per row.
+        stale_documents = [
+            stale_document
+            for stale_document in Document.objects.filter(user=request.user).exclude(file="")
+            if stale_document.file
+        ]
+        for stale_document in stale_documents:
+            delete_document_file(stale_document)
+        if stale_documents:
+            Document.objects.filter(pk__in=[item.pk for item in stale_documents]).update(
+                file="", updated_at=timezone.now()
+            )
 
         upload = serializer.validated_data["file"]
         extension = Path(upload.name).suffix.lower().replace(".", "")

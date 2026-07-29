@@ -1,1 +1,1 @@
-web: python manage.py migrate && gunicorn config.wsgi:application --timeout 300 --workers 1
+web: python manage.py migrate --noinput && gunicorn config.wsgi:application --worker-class gthread --workers 2 --threads 4 --timeout 300 --graceful-timeout 30 --keep-alive 65 --preload --access-logfile - --error-logfile -
