@@ -186,6 +186,14 @@ DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").r
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 DEEPSEEK_TIMEOUT_SECONDS = int(os.getenv("DEEPSEEK_TIMEOUT_SECONDS", "45"))
 DEEPSEEK_KEY_LOADED = bool(DEEPSEEK_API_KEY.strip())
+
+# Walrus Memory (MemWal). MEMWAL_PRIVATE_KEY is an Ed25519 delegate key: treat it
+# exactly like an API key and never commit it. Memory is strictly optional, so
+# the app must boot and quizzes must still grade with all of this unset.
+MEMWAL_ACCOUNT_ID = os.environ.get("MEMWAL_ACCOUNT_ID", "")
+MEMWAL_PRIVATE_KEY = os.environ.get("MEMWAL_PRIVATE_KEY", "")
+MEMWAL_ENV = os.environ.get("MEMWAL_ENV", "prod")
+MEMWAL_ENABLED = os.environ.get("MEMWAL_ENABLED", "false").lower() == "true"
 MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))
 MAX_EXTRACTED_TEXT_CHARS = int(os.getenv("MAX_EXTRACTED_TEXT_CHARS", "80000"))
 MAX_DEEPSEEK_CONTEXT_CHARS = int(os.getenv("MAX_DEEPSEEK_CONTEXT_CHARS", "20000"))

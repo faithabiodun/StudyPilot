@@ -112,3 +112,135 @@ class NamespaceIsolationTests(SimpleTestCase):
         b = parse(build_miss("sp-u2-pharmacology", "shared-topic", "q", "a", "m", "c", on=ON))
         self.assertEqual(a.topic, b.topic)
         self.assertNotEqual(a.namespace, b.namespace)
+
+
+# --- Step 2: service layer, exercised against MemWalMockSync (no credentials) ---
+
+from datetime import timedelta  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+from memwal import MemWalMockSync, RememberBulkItem  # noqa: E402
+
+from . import services  # noqa: E402
+
+
+class _StubUser:
+    def __init__(self, user_id):
+        self.id = user_id
+
+
+def _seeded_client(namespace, texts):
+    client = MemWalMockSync.create(namespace=namespace)
+    if texts:
+        client.remember_bulk_async([RememberBulkItem(text=t, namespace=namespace) for t in texts])
+    return client
+
+
+class NamespaceForTests(SimpleTestCase):
+    def test_namespaces_never_collide_across_users(self):
+        a = services.namespace_for(_StubUser(1), "Pharmacology")
+        b = services.namespace_for(_StubUser(2), "Pharmacology")
+        self.assertEqual(a, "sp-u1-pharmacology")
+        self.assertNotEqual(a, b)
+
+    def test_course_phrasings_give_one_namespace(self):
+        user = _StubUser(7)
+        variants = {services.namespace_for(user, c) for c in ["Pharmacology", "pharmacology", "  PHARMACOLOGY  "]}
+        self.assertEqual(variants, {"sp-u7-pharmacology"})
+
+    def test_missing_course_falls_back_to_general(self):
+        self.assertEqual(services.namespace_for(_StubUser(3), ""), "sp-u3-general")
+
+
+class BriefingTests(SimpleTestCase):
+    def setUp(self):
+        self.user = _StubUser(1)
+        self.ns = "sp-u1-pharmacology"
+        self.today = date(2026, 8, 22)
+
+    def _brief(self, texts):
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=_seeded_client(self.ns, texts)):
+            return services.weakness_briefing(self.user, "Pharmacology", on=self.today)
+
+    def test_three_phrasings_of_one_topic_count_as_three_misses(self):
+        texts = [
+            build_miss(self.ns, "Beta-Blocker Selectivity", "q1", "a", "m", "c", on=date(2026, 8, 1)),
+            build_miss(self.ns, "beta blocker selectivity", "q2", "a", "m", "c", on=date(2026, 8, 10)),
+            build_miss(self.ns, "BETA-BLOCKER-SELECTIVITY", "q3", "a", "m", "c", on=date(2026, 8, 20)),
+        ]
+        topics = self._brief(texts)["weak_topics"]
+        self.assertEqual(len(topics), 1)
+        self.assertEqual(topics[0]["topic"], "beta-blocker-selectivity")
+        self.assertEqual(topics[0]["misses"], 3)
+
+    def test_stale_miss_scores_far_below_a_live_one(self):
+        texts = [
+            build_miss(self.ns, "old-topic", "q", "a", "m", "c", severity="high", on=self.today - timedelta(days=150)),
+            build_miss(self.ns, "live-topic", "q", "a", "m", "c", severity="high", on=self.today),
+        ]
+        scores = {t["topic"]: t["score"] for t in self._brief(texts)["weak_topics"]}
+        self.assertGreater(scores["live-topic"], scores["old-topic"] * 10)
+
+    def test_two_hit_streak_surfaces_as_one_more_to_master(self):
+        texts = [
+            build_miss(self.ns, "streaky", "q", "a", "m", "c", on=date(2026, 8, 1)),
+            build_hit(self.ns, "streaky", on=date(2026, 8, 10)),
+            build_hit(self.ns, "streaky", on=date(2026, 8, 15)),
+        ]
+        names = [t["topic"] for t in self._brief(texts)["one_more_to_master"]]
+        self.assertEqual(names, ["streaky"])
+
+    def test_live_mastery_stays_out_of_the_briefing(self):
+        texts = [
+            build_miss(self.ns, "done-topic", "q", "a", "m", "c", on=date(2026, 8, 1)),
+            build_mastered(self.ns, "done-topic", [date(2026, 8, 1)], on=date(2026, 8, 10)),
+        ]
+        brief = self._brief(texts)
+        self.assertEqual(brief["weak_topics"], [])
+        self.assertEqual(brief["spot_check"], [])
+
+    def test_expired_mastery_surfaces_for_spot_check(self):
+        texts = [build_mastered(self.ns, "rusty", [date(2026, 1, 1)], on=date(2026, 6, 1))]
+        self.assertEqual([s["topic"] for s in self._brief(texts)["spot_check"]], ["rusty"])
+
+    def test_miss_after_mastery_voids_it_without_a_delete(self):
+        """Append-only: a failed spot check must beat an existing MASTERED record."""
+        texts = [
+            build_mastered(self.ns, "regressed", [date(2026, 8, 1)], on=date(2026, 8, 5)),
+            build_miss(self.ns, "regressed", "q", "a", "m", "c", on=date(2026, 8, 20)),
+        ]
+        self.assertEqual([t["topic"] for t in self._brief(texts)["weak_topics"]], ["regressed"])
+
+    def test_headerless_memories_are_counted_not_dropped(self):
+        texts = [
+            build_miss(self.ns, "real-topic", "q", "a", "m", "c", on=self.today),
+            "I always mix up beta blockers, analyze wrote this in its own words",
+        ]
+        brief = self._brief(texts)
+        self.assertEqual(brief["unparsed_records"], 1)
+        self.assertEqual(len(brief["weak_topics"]), 1)
+
+
+class DisabledMemoryTests(SimpleTestCase):
+    def test_briefing_is_inert_when_disabled(self):
+        with patch.object(services, "memwal_enabled", return_value=False):
+            brief = services.weakness_briefing(_StubUser(1), "Pharmacology")
+        self.assertFalse(brief["enabled"])
+        self.assertEqual(brief["weak_topics"], [])
+
+    def test_recording_is_inert_when_disabled(self):
+        with patch.object(services, "memwal_enabled", return_value=False):
+            summary = services.record_quiz_attempt(_StubUser(1), None, [{"subtopic": "x", "is_correct": False}])
+        self.assertFalse(summary["enabled"])
+        self.assertEqual(summary["written"], 0)
+
+    def test_relayer_failure_never_raises_into_the_request(self):
+        """Grading must still succeed when memory is down."""
+        boom = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("relayer unreachable"))
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", side_effect=boom):
+            summary = services.record_quiz_attempt(_StubUser(1), None, [{"subtopic": "x", "is_correct": False}])
+            brief = services.weakness_briefing(_StubUser(1), "Pharmacology")
+        self.assertIn("relayer unreachable", summary["error"])
+        self.assertIn("relayer unreachable", brief["error"])
