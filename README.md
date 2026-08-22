@@ -7,8 +7,8 @@ Advisor, a Resource Hub, Academic Passport onboarding, and full account and
 profile management on top of Django JWT auth and Supabase Google OAuth.
 
 - **Live app:** https://nowstudypilot.onrender.com
-- **Backend API:** https://studypilot-r710.onrender.com/api
-- **Health check:** https://studypilot-r710.onrender.com/api/health/
+- **Backend API:** https://studypilotbackend-production-d343.up.railway.app/api
+- **Health check:** https://studypilotbackend-production-d343.up.railway.app/api/health/
 
 ## What is StudyPilot?
 
@@ -28,9 +28,10 @@ profile management on top of Django JWT auth and Supabase Google OAuth.
   YouTube Data API, Google Books, and OpenAlex.
 - **Secure auth.** Django JWT with transparent token refresh, plus Supabase Google
   OAuth exchanged for a Django JWT.
-- **Built for free hosting.** The frontend survives Render cold starts by pinging
-  the backend on load and retrying connection level failures, so features keep
-  reaching the API even after the backend has been idle.
+- **Resilient to flaky networks.** The frontend pings the backend on load and
+  retries connection level failures with backoff, so a dropped or slow
+  connection does not surface as a failed feature. The backend itself runs
+  always on, so there is no idle spin down to wait for.
 
 ## Stacks
 
@@ -71,7 +72,7 @@ profile management on top of Django JWT auth and Supabase Google OAuth.
 - **OAuth:** Supabase Google OAuth, exchanged for a Django JWT
 - **AI provider:** DeepSeek V4 Flash through the OpenAI compatible client
 - **Resource Hub:** YouTube Data API, Google Books API, OpenAlex
-- **Hosting:** Render (frontend static site and backend web service)
+- **Hosting:** Render (frontend static site) and Railway (backend web service)
 
 ## Features at a glance
 
