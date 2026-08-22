@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "apps.resources.apps.ResourcesConfig",
     "apps.advisor.apps.AdvisorConfig",
     "apps.dashboard.apps.DashboardConfig",
+    "apps.memory.apps.MemoryConfig",
 ]
 
 MIDDLEWARE = [

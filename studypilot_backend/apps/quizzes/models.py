@@ -26,6 +26,9 @@ class QuizQuestion(models.Model):
     correct_answer = models.TextField()
     explanation = models.TextField(blank=True)
     question_type = models.CharField(max_length=80, default="multiple_choice")
+    # The concept this question tests, as a slug. Mistake memory groups by this,
+    # so without it every miss in a course collapses onto a single topic.
+    subtopic = models.CharField(max_length=120, blank=True)
 
     def __str__(self):
         return self.question[:80]

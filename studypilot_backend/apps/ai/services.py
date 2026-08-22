@@ -194,8 +194,13 @@ Difficulty: {difficulty}
 Guidance: {_difficulty_guidance(difficulty)}
 Number of MCQs: {number_of_questions}
 
+Every question needs a "subtopic": the one concept it tests, as a short lowercase
+hyphenated slug, for example "beta-blocker-selectivity" or "third-normal-form".
+Use the same slug for every question testing the same concept, and name the
+concept rather than the document.
+
 Return JSON exactly like:
-{{"mcqs":[{{"question":"string","options":[{{"option_text":"string","is_correct":true}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}}],"correct_answer":"string","explanation":"string"}}]}}
+{{"mcqs":[{{"question":"string","subtopic":"string","options":[{{"option_text":"string","is_correct":true}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}}],"correct_answer":"string","explanation":"string"}}]}}
 
 Selected PDF context:
 {context}
@@ -216,8 +221,13 @@ Difficulty: {difficulty}
 Guidance: {_difficulty_guidance(difficulty)}
 Number of questions: {number_of_questions}
 
+Every question needs a "subtopic": the one concept it tests, as a short lowercase
+hyphenated slug, for example "beta-blocker-selectivity" or "third-normal-form".
+Use the same slug for every question testing the same concept, and name the
+concept rather than the document.
+
 Return JSON exactly like:
-{{"questions":[{{"question_type":"multiple_choice","question":"string","options":[{{"option_text":"string","is_correct":true}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}}],"correct_answer":"string","explanation":"string"}},{{"question_type":"true_false","question":"string","correct_answer":"True","explanation":"string"}},{{"question_type":"short_answer","question":"string","correct_answer":"string","explanation":"string"}},{{"question_type":"theory","question":"string","correct_answer":"string","explanation":"string"}}]}}
+{{"questions":[{{"question_type":"multiple_choice","question":"string","subtopic":"string","options":[{{"option_text":"string","is_correct":true}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}}],"correct_answer":"string","explanation":"string"}},{{"question_type":"true_false","question":"string","subtopic":"string","correct_answer":"True","explanation":"string"}},{{"question_type":"short_answer","question":"string","subtopic":"string","correct_answer":"string","explanation":"string"}},{{"question_type":"theory","question":"string","subtopic":"string","correct_answer":"string","explanation":"string"}}]}}
 
 Selected PDF context:
 {context}

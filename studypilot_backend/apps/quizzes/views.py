@@ -8,6 +8,7 @@ from apps.documents.services import clean_extracted_text, clean_safe_string
 from apps.documents.models import Document
 from apps.dashboard.services import record_activity
 from apps.ai.services import AIServiceError, generate_pdf_mcqs_with_deepseek, generate_pdf_mixed_quiz_with_deepseek, select_pdf_study_context
+from apps.memory.records import slugify_topic
 from apps.study_tools.deduplication import deduplicate_questions
 from apps.utils import error_response, success_response
 
@@ -84,6 +85,7 @@ class GenerateQuizView(APIView):
                 correct_answer=clean_safe_string(item.get("correct_answer", ""), max_length=255),
                 explanation=clean_extracted_text(item.get("explanation", "")),
                 question_type=clean_safe_string(item.get("question_type", "multiple_choice"), fallback="multiple_choice", max_length=40),
+                subtopic=slugify_topic(item.get("subtopic", "")),
             )
             QuizOption.objects.bulk_create([
                 QuizOption(question=question, option_text=clean_safe_string(option.get("option_text", ""), max_length=240), is_correct=bool(option.get("is_correct")))
@@ -162,6 +164,7 @@ class GenerateMCQView(APIView):
                 correct_answer=clean_safe_string(item.get("correct_answer", ""), max_length=255),
                 explanation=clean_extracted_text(item.get("explanation", "")),
                 question_type="multiple_choice",
+                subtopic=slugify_topic(item.get("subtopic", "")),
             )
             QuizOption.objects.bulk_create([
                 QuizOption(question=question, option_text=clean_safe_string(option.get("option_text", ""), max_length=240), is_correct=bool(option.get("is_correct")))
