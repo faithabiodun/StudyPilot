@@ -4,6 +4,7 @@ import Button from "../../components/common/Button";
 import FloatingFileCard from "../../components/common/FloatingFileCard";
 import LogoMark from "../../components/common/LogoMark";
 import SectionHeader from "../../components/common/SectionHeader";
+import { useAuth } from "../../context/AuthContext";
 import { actionCards, features, heroChips, howItWorks, overviewCards, recentActivity } from "../../data/mockData";
 
 function DashboardPreview() {
@@ -74,6 +75,8 @@ function DashboardPreview() {
 }
 
 export default function LandingPage() {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div className="min-h-screen bg-white text-pilot-ink">
       <header className="fixed left-0 right-0 top-4 z-50 px-4">
@@ -129,15 +132,27 @@ export default function LandingPage() {
           <div className="mx-auto max-w-6xl">
             <SectionHeader eyebrow="Features Section" title="Everything Students Need In One Academic Workspace" />
             <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature) => (
-                <Link to={feature.path} key={feature.title} className="rounded-[1.5rem] border border-pilot-line bg-white p-7 text-center shadow-soft transition hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot">
-                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-pilot-soft text-pilot-blue">
-                    <feature.icon size={25} />
-                  </div>
-                  <h3 className="mt-5 text-lg font-black">{feature.title}</h3>
-                  <p className="mt-3 text-sm leading-6 text-pilot-muted">{feature.description}</p>
-                </Link>
-              ))}
+              {features.map((feature) => {
+                const cardClasses = "rounded-[1.5rem] border border-pilot-line bg-white p-7 text-center shadow-soft transition";
+                const body = (
+                  <>
+                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-pilot-soft text-pilot-blue">
+                      <feature.icon size={25} />
+                    </div>
+                    <h3 className="mt-5 text-lg font-black">{feature.title}</h3>
+                    <p className="mt-3 text-sm leading-6 text-pilot-muted">{feature.description}</p>
+                  </>
+                );
+                // Signed out these are descriptions, not entry points. Linking
+                // them only bounced visitors off to the login screen.
+                return isAuthenticated ? (
+                  <Link to={feature.path} key={feature.title} className={`${cardClasses} hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot`}>
+                    {body}
+                  </Link>
+                ) : (
+                  <div key={feature.title} className={cardClasses}>{body}</div>
+                );
+              })}
             </div>
           </div>
         </section>
