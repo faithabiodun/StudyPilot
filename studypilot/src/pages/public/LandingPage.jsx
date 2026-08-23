@@ -1,12 +1,77 @@
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, GraduationCap } from "lucide-react";
 import Button from "../../components/common/Button";
 import FloatingFileCard from "../../components/common/FloatingFileCard";
 import LogoMark from "../../components/common/LogoMark";
 import SectionHeader from "../../components/common/SectionHeader";
+import useInView from "../../hooks/useInView";
 import { actionCards, features, heroChips, howItWorks, overviewCards, recentActivity } from "../../data/mockData";
 
+const previewNav = ["Dashboard", "PDF Study Converter", "YouTube Converter", "Resource Hub", "AI Advisor", "Profile"];
+// The sidebar tour visits the real features; Profile stays a resting item.
+const TOUR_STOPS = 5;
+const TICK_MS = 2600;
+const barScenes = [
+  [34, 48, 42, 60, 52, 72, 86],
+  [52, 38, 64, 48, 78, 58, 90],
+  [28, 56, 44, 70, 62, 50, 82],
+  [46, 40, 58, 66, 54, 84, 74],
+  [38, 62, 50, 56, 72, 64, 92]
+];
+
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(query.matches);
+    const onChange = (event) => setReduced(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  return reduced;
+}
+
+function CountUp({ value, restartKey, reduced }) {
+  const target = parseInt(String(value), 10) || 0;
+  const [shown, setShown] = useState(reduced ? target : 0);
+  const frame = useRef(0);
+  useEffect(() => {
+    if (reduced) {
+      setShown(target);
+      return undefined;
+    }
+    const startedAt = performance.now();
+    const duration = 900;
+    const step = (now) => {
+      const progress = Math.min((now - startedAt) / duration, 1);
+      const eased = 1 - (1 - progress) ** 3;
+      setShown(Math.round(target * eased));
+      if (progress < 1) frame.current = requestAnimationFrame(step);
+    };
+    frame.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame.current);
+  }, [target, restartKey, reduced]);
+  return <>{shown}</>;
+}
+
 function DashboardPreview() {
+  const reduced = usePrefersReducedMotion();
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (reduced) return undefined;
+    const timer = window.setInterval(() => setTick((current) => current + 1), TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [reduced]);
+
+  const activeNav = tick % TOUR_STOPS;
+  const activeTitle = previewNav[activeNav];
+  const loop = Math.floor(tick / TOUR_STOPS);
+  const bars = barScenes[tick % barScenes.length];
+  const activityStart = tick % recentActivity.length;
+  const visibleActivity = Array.from({ length: 3 }, (_, index) => recentActivity[(activityStart + index) % recentActivity.length]);
+
   return (
     <div className="mx-auto mt-16 max-w-6xl overflow-hidden rounded-[2rem] border border-pilot-line bg-white shadow-pilot">
       <div className="grid min-h-[420px] lg:grid-cols-[190px_1fr]">
@@ -16,8 +81,13 @@ function DashboardPreview() {
             StudyPilot
           </div>
           <div className="mt-8 space-y-2">
-            {["Dashboard", "PDF Study Converter", "YouTube Converter", "Resource Hub", "AI Advisor", "Profile"].map((item, index) => (
-              <div key={item} className={`rounded-xl px-3 py-2 text-xs font-bold ${index === 0 ? "bg-white text-pilot-blue" : "text-blue-100"}`}>
+            {previewNav.map((item, index) => (
+              <div
+                key={item}
+                className={`rounded-xl px-3 py-2 text-xs font-bold transition-all duration-500 ${
+                  index === activeNav ? "translate-x-1 bg-white text-pilot-blue shadow-soft" : "text-blue-100"
+                }`}
+              >
                 {item}
               </div>
             ))}
@@ -37,32 +107,46 @@ function DashboardPreview() {
             {overviewCards.map((item) => (
               <div key={item.label} className="rounded-2xl border border-pilot-line bg-white p-4 shadow-soft">
                 <item.icon className="text-pilot-blue" size={20} />
-                <p className="mt-4 text-2xl font-black text-pilot-ink">{item.value}</p>
+                <p className="mt-4 text-2xl font-black text-pilot-ink">
+                  <CountUp value={item.value} restartKey={loop} reduced={reduced} />
+                </p>
                 <p className="text-xs font-semibold text-pilot-muted">{item.label}</p>
               </div>
             ))}
           </div>
           <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_0.75fr]">
             <div className="grid gap-4 md:grid-cols-2">
-              {actionCards.map((item) => (
-                <div key={item.title} className="rounded-2xl border border-pilot-line bg-white p-4 shadow-soft">
-                  <item.icon className="text-pilot-blue" size={22} />
-                  <h4 className="mt-3 font-black text-pilot-ink">{item.title}</h4>
-                  <p className="mt-1 text-xs leading-5 text-pilot-muted">{item.text}</p>
-                </div>
-              ))}
+              {actionCards.map((item) => {
+                const spotlight = item.title === activeTitle;
+                return (
+                  <div
+                    key={item.title}
+                    className={`rounded-2xl border bg-white p-4 transition-all duration-500 ${
+                      spotlight ? "-translate-y-1 border-pilot-blue shadow-glow" : "border-pilot-line shadow-soft"
+                    }`}
+                  >
+                    <item.icon className={`transition-colors duration-500 ${spotlight ? "text-pilot-blue" : "text-pilot-blue/70"}`} size={22} />
+                    <h4 className="mt-3 font-black text-pilot-ink">{item.title}</h4>
+                    <p className="mt-1 text-xs leading-5 text-pilot-muted">{item.text}</p>
+                  </div>
+                );
+              })}
             </div>
             <div className="rounded-2xl border border-pilot-line bg-white p-5 shadow-soft">
               <h4 className="font-black text-pilot-ink">Study Progress</h4>
               <div className="mt-5 flex h-24 items-end gap-2">
-                {[34, 48, 42, 60, 52, 72, 86].map((height, index) => (
-                  <div key={index} className="flex-1 rounded-t-xl bg-pilot-blue/80" style={{ height: `${height}%` }} />
+                {bars.map((height, index) => (
+                  <div
+                    key={index}
+                    className="flex-1 rounded-t-xl bg-pilot-blue/80 transition-[height] duration-700 ease-out"
+                    style={{ height: `${height}%`, transitionDelay: `${index * 45}ms` }}
+                  />
                 ))}
               </div>
               <h4 className="mt-6 font-black text-pilot-ink">Recent Activity</h4>
-              <div className="mt-3 space-y-2">
-                {recentActivity.slice(0, 3).map((item) => (
-                  <p key={item} className="rounded-xl bg-pilot-soft px-3 py-2 text-xs font-semibold text-pilot-muted">{item}</p>
+              <div className="mt-3 space-y-2 overflow-hidden">
+                {visibleActivity.map((item) => (
+                  <p key={item} className="pilot-pop rounded-xl bg-pilot-soft px-3 py-2 text-xs font-semibold text-pilot-muted">{item}</p>
                 ))}
               </div>
             </div>
@@ -74,6 +158,9 @@ function DashboardPreview() {
 }
 
 export default function LandingPage() {
+  const [featuresRef, featuresInView] = useInView();
+  const [stepsRef, stepsInView] = useInView();
+
   return (
     <div className="min-h-screen bg-white text-pilot-ink">
       <header className="fixed left-0 right-0 top-4 z-50 px-4">
@@ -128,9 +215,14 @@ export default function LandingPage() {
         <section id="features" className="px-5 py-24">
           <div className="mx-auto max-w-6xl">
             <SectionHeader eyebrow="Features Section" title="Everything Students Need In One Academic Workspace" />
-            <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature) => (
-                <Link to={feature.path} key={feature.title} className="rounded-[1.5rem] border border-pilot-line bg-white p-7 text-center shadow-soft transition hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot">
+            <div ref={featuresRef} className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {features.map((feature, index) => (
+                <Link
+                  to={feature.path}
+                  key={feature.title}
+                  className={`pilot-reveal rounded-[1.5rem] border border-pilot-line bg-white p-7 text-center shadow-soft transition hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot ${featuresInView ? "is-visible" : ""}`}
+                  style={{ animationDelay: `${index * 110}ms` }}
+                >
                   <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-pilot-soft text-pilot-blue">
                     <feature.icon size={25} />
                   </div>
@@ -145,10 +237,14 @@ export default function LandingPage() {
         <section id="resources" className="bg-pilot-ice px-5 py-24">
           <div className="mx-auto max-w-6xl">
             <SectionHeader eyebrow="How It Works Section" title="How StudyPilot Works" text="Simple steps to smarter studying." />
-            <div className="relative mt-12 grid gap-5 md:grid-cols-3">
+            <div ref={stepsRef} className="relative mt-12 grid gap-5 md:grid-cols-3">
               <div className="absolute left-[18%] right-[18%] top-16 hidden border-t border-dashed border-pilot-blue/40 md:block" />
               {howItWorks.map((step, index) => (
-                <div key={step.title} className="relative rounded-[1.5rem] border border-pilot-line bg-white p-8 text-center shadow-soft transition hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot">
+                <div
+                  key={step.title}
+                  className={`pilot-reveal relative rounded-[1.5rem] border border-pilot-line bg-white p-8 text-center shadow-soft transition hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot ${stepsInView ? "is-visible" : ""}`}
+                  style={{ animationDelay: `${index * 140}ms` }}
+                >
                   <div className="absolute -top-4 left-1/2 grid h-8 w-8 -translate-x-1/2 place-items-center rounded-full bg-pilot-blue text-sm font-black text-white">{index + 1}</div>
                   <div className="mx-auto mt-4 grid h-16 w-16 place-items-center rounded-2xl bg-pilot-soft text-pilot-blue">
                     <step.icon size={28} />
