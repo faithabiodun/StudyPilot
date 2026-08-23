@@ -161,34 +161,3 @@ textarea {
 .pilot-shake {
   animation: pilotShake 0.32s ease-in-out;
 }
-
-/* Cards slide up into place as their section scrolls into view. Held hidden
-   until .is-visible so nothing flashes before the observer fires. */
-@keyframes pilotRevealUp {
-  0% {
-    opacity: 0;
-    transform: translateY(34px) scale(0.97);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.pilot-reveal {
-  opacity: 0;
-  will-change: transform, opacity;
-}
-
-.pilot-reveal.is-visible {
-  animation: pilotRevealUp 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pilot-reveal,
-  .pilot-reveal.is-visible {
-    opacity: 1;
-    transform: none;
-    animation: none;
-  }
-}
