@@ -7,6 +7,7 @@ import LandingPage from "./pages/public/LandingPage";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
 import AuthCallbackPage from "./pages/auth/AuthCallbackPage";
+import ChooseUsernamePage from "./pages/auth/ChooseUsernamePage";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import AIAdvisorPage from "./pages/student/AIAdvisorPage";
 import PDFStudioPage from "./pages/student/PDFStudioPage";
@@ -35,6 +36,11 @@ export default function App() {
       <Route path="/profile" element={<Navigate to="/student/profile" replace />} />
       <Route path="/settings" element={<Navigate to="/profile" replace />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route element={<ProtectedRoute allowedRole="student" requireProfile={false} requireUsername={false} />}>
+        <Route element={<AuthLayout />}>
+          <Route path="/choose-username" element={<ChooseUsernamePage />} />
+        </Route>
+      </Route>
       <Route element={<ProtectedRoute allowedRole="student" requireProfile={false} />}>
         <Route path="/onboarding" element={<OnboardingPage />} />
       </Route>

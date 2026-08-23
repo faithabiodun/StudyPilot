@@ -58,6 +58,7 @@ export async function registerWithEmail(payload) {
     method: "POST",
     body: JSON.stringify({
       full_name: payload.fullName,
+      username: payload.username,
       email: payload.email,
       password: payload.password,
       confirm_password: payload.confirmPassword,
@@ -88,6 +89,24 @@ export async function loginWithSui({ address, signature, nonce }) {
     body: JSON.stringify({ address, signature, nonce })
   });
   return persistAuthPayload(response);
+}
+
+export async function checkUsernameAvailable(username) {
+  const response = await apiRequest(
+    `/auth/username/available/?username=${encodeURIComponent(username)}`,
+    { skipAuth: true },
+    // A failed availability probe should never block typing.
+    () => ({ data: { available: false, reason: "" } })
+  );
+  return response?.data || response;
+}
+
+export async function setUsername(username) {
+  const response = await apiRequest("/auth/username/", {
+    method: "POST",
+    body: JSON.stringify({ username })
+  });
+  return response?.data || response;
 }
 
 export async function completeOnboarding(payload) {

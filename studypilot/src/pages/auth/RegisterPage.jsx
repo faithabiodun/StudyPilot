@@ -15,7 +15,7 @@ function isEmail(value) {
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { register } = useAuth();
-  const [form, setForm] = useState({ fullName: "", email: "", password: "", confirmPassword: "" });
+  const [form, setForm] = useState({ fullName: "", username: "", email: "", password: "", confirmPassword: "" });
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,6 +25,11 @@ export default function RegisterPage() {
     setFormError("");
     const next = {
       fullName: !form.fullName ? "Full name is required" : "",
+      username: !form.username
+        ? "Username is required"
+        : !/^[a-zA-Z0-9_]{3,30}$/.test(form.username)
+          ? "3 to 30 characters, letters, numbers or underscores only"
+          : "",
       email: !form.email ? "Email is required" : !isEmail(form.email) ? "Enter a valid email" : "",
       password: !form.password ? "Password is required" : "",
       confirmPassword: form.password !== form.confirmPassword ? "Passwords must match" : ""
@@ -66,6 +71,7 @@ export default function RegisterPage() {
       {formError && <p className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{formError}</p>}
       <div className="space-y-4">
         <Input label="Full Name" value={form.fullName} error={errors.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} />
+        <Input label="Username" value={form.username} error={errors.username} placeholder="e.g. faith_a" onChange={(event) => setForm({ ...form, username: event.target.value.replace(/\s/g, "") })} />
         <Input label="Email" type="email" value={form.email} error={errors.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
         <Input label="Password" type="password" value={form.password} error={errors.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
         <Input label="Confirm Password" type="password" value={form.confirmPassword} error={errors.confirmPassword} onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })} />

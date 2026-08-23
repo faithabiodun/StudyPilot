@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
@@ -13,6 +15,7 @@ class UserSerializer(serializers.ModelSerializer):
             "id",
             "full_name",
             "first_name",
+            "username",
             "email",
             "role",
             "profile_completed",
@@ -45,6 +48,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class RegisterSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=255)
+    username = serializers.CharField(max_length=30)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
     confirm_password = serializers.CharField(write_only=True)
@@ -54,6 +58,10 @@ class RegisterSerializer(serializers.Serializer):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError("Email already exists.")
         return value.lower()
+
+    def validate_username(self, value):
+        # Defined below in the module; resolved at call time.
+        return validate_username_value(value)
 
     def validate(self, attrs):
         if attrs["password"] != attrs["confirm_password"]:
@@ -90,6 +98,37 @@ class SuiAuthSerializer(serializers.Serializer):
     address = serializers.CharField(max_length=66)
     signature = serializers.CharField()
     nonce = serializers.CharField(max_length=64)
+
+
+USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_]{3,30}$")
+# Reserved so a handle can never be mistaken for one of our own routes.
+RESERVED_USERNAMES = {
+    "admin", "administrator", "root", "studypilot", "support", "help", "api",
+    "login", "logout", "register", "signup", "signin", "me", "profile",
+    "dashboard", "settings", "student", "null", "undefined", "system",
+}
+
+
+def validate_username_value(value):
+    """Shared rules so the register form and the set-username endpoint agree."""
+    handle = (value or "").strip()
+    if not USERNAME_PATTERN.match(handle):
+        raise serializers.ValidationError(
+            "Username must be 3 to 30 characters and use only letters, numbers, or underscores."
+        )
+    if handle.lower() in RESERVED_USERNAMES:
+        raise serializers.ValidationError("That username is reserved. Please choose another.")
+    # Case-insensitive so Faith and faith cannot both be taken.
+    if User.objects.filter(username__iexact=handle).exists():
+        raise serializers.ValidationError("That username is already taken.")
+    return handle
+
+
+class SetUsernameSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=30)
+
+    def validate_username(self, value):
+        return validate_username_value(value)
 
 
 class OnboardingSerializer(serializers.ModelSerializer):

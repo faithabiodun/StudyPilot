@@ -1,9 +1,15 @@
 export function getFirstName(user) {
+  // The chosen username wins. Wallet sign-ups carry a placeholder full_name
+  // like "Sui Wallet 0x760f..." which would otherwise greet them as "Sui".
+  const username = (user?.username || "").trim();
+  if (username) {
+    return username;
+  }
   const fullName = user?.full_name || user?.fullName || user?.name || "";
   if (fullName.trim()) {
     return fullName.trim().split(/\s+/)[0];
   }
-  if (user?.email) {
+  if (user?.email && !user.email.endsWith("@sui.studypilot.local")) {
     return user.email.split("@")[0];
   }
   return "Student";

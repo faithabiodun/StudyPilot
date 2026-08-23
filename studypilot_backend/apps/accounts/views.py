@@ -4,12 +4,13 @@ import secrets
 from django.conf import settings
 from django.apps import apps
 from django.contrib.auth import get_user_model
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 import requests
 from rest_framework import status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -24,9 +25,11 @@ from .serializers import (
     OnboardingSerializer,
     ProfileUpdateSerializer,
     RegisterSerializer,
+    SetUsernameSerializer,
     SuiAuthSerializer,
     SupabaseGoogleAuthSerializer,
     UserSerializer,
+    validate_username_value,
 )
 from .sui import SuiVerificationError, verify_personal_message
 
@@ -281,6 +284,58 @@ class SuiAuthView(APIView):
         payload["created"] = created
         payload["sui_address"] = verified_address
         return success_response("Sui login successful", payload)
+
+
+class UsernameAvailableView(APIView):
+    """Live availability check for the sign-up form."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        handle = (request.query_params.get("username") or "").strip()
+        try:
+            validate_username_value(handle)
+        except DRFValidationError as exc:
+            reason = exc.detail[0] if isinstance(exc.detail, list) else str(exc.detail)
+            return success_response("Username checked", {"username": handle, "available": False, "reason": str(reason)})
+        return success_response("Username checked", {"username": handle, "available": True, "reason": ""})
+
+
+class SetUsernameView(APIView):
+    """Claim a username after signing in with a wallet or Google.
+
+    Those flows have no username to borrow, so the account is created without
+    one and the client sends the user here before anything else.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.username:
+            return error_response("You already have a username.", status_code=status.HTTP_400_BAD_REQUEST)
+
+        serializer = SetUsernameSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Could not set username", serializer.errors)
+
+        handle = serializer.validated_data["username"]
+        request.user.username = handle
+        # The greeting reads full_name, so replace the wallet placeholder with
+        # the handle the student actually picked.
+        placeholder = not request.user.full_name or request.user.full_name.startswith("Sui Wallet ")
+        update_fields = ["username", "updated_at"]
+        if placeholder:
+            request.user.full_name = handle
+            update_fields.append("full_name")
+        try:
+            request.user.save(update_fields=update_fields)
+        except IntegrityError:
+            # Two people can pass validation at the same moment; the unique
+            # index is what actually decides.
+            return error_response("That username was just taken. Please choose another.", status_code=status.HTTP_409_CONFLICT)
+
+        return success_response("Username set", UserSerializer(request.user).data)
 
 
 class LogoutView(APIView):

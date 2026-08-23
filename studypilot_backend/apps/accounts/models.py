@@ -9,7 +9,13 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError("Email is required")
         email = self.normalize_email(email)
-        user = self.model(email=email, username=email, **extra_fields)
+        # username is chosen by the user, so leave it unset rather than
+        # defaulting to the email. Empty strings would collide under the
+        # unique constraint, so absent means NULL.
+        extra_fields.setdefault("username", None)
+        if not extra_fields.get("username"):
+            extra_fields["username"] = None
+        user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -33,7 +39,10 @@ class User(AbstractUser):
         STUDENT = "student", "Student"
         ADMIN = "admin", "Admin"
 
-    username = models.CharField(max_length=150, blank=True)
+    # The handle the student picks at sign-up. Null until chosen, because
+    # wallet and Google sign-ups have no username to borrow and several empty
+    # strings would violate the unique constraint.
+    username = models.CharField(max_length=150, unique=True, null=True, blank=True)
     email = models.EmailField(unique=True)
     full_name = models.CharField(max_length=255)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.STUDENT)
