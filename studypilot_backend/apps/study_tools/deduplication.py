@@ -79,6 +79,9 @@ def _clean_question(item, require_mcq=False):
         "question": question,
         "correct_answer": correct_answer,
         "explanation": explanation,
+        # Mistake memory groups by this; rebuilding the dict without it silently
+        # disabled per-concept tracking for every generated question.
+        "subtopic": clean_safe_string(item.get("subtopic", ""), max_length=120),
     }
     if require_mcq or question_type == "multiple_choice":
         options = _dedupe_options(item.get("options", []), correct_answer=correct_answer)
