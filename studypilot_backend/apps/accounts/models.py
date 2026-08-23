@@ -56,6 +56,10 @@ class User(AbstractUser):
     google_id = models.CharField(max_length=255, blank=True, db_index=True)
     supabase_user_id = models.CharField(max_length=255, blank=True, db_index=True)
     is_google_account = models.BooleanField(default=False)
+    # Canonical 0x-prefixed 32-byte address. Unique so one wallet maps to one
+    # account, but nullable because most users never connect a wallet and
+    # several blank strings would collide under a unique constraint.
+    sui_address = models.CharField(max_length=66, unique=True, null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -66,3 +70,22 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+
+class SuiLoginChallenge(models.Model):
+    """A one-time nonce a wallet must sign.
+
+    Kept in the database rather than the default local-memory cache: gunicorn
+    runs multiple workers, so a nonce issued by one worker would be invisible to
+    the worker that handles the verification request.
+    """
+
+    nonce = models.CharField(max_length=64, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.nonce

@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import Button from "../../components/common/Button";
 import GoogleIcon from "../../components/common/GoogleIcon";
+import SuiSignInButton from "../../components/auth/SuiSignInButton";
 import Input from "../../components/common/Input";
 import LogoMark from "../../components/common/LogoMark";
 import { useAuth } from "../../context/AuthContext";
@@ -55,10 +56,11 @@ export default function LoginPage() {
         <h1 className="mt-4 text-3xl font-black text-pilot-ink">Welcome Back!</h1>
         <p className="mt-1 text-sm text-pilot-muted">Login to your account</p>
       </div>
-      <Button type="button" variant="secondary" className="mb-5 w-full" onClick={handleGoogleLogin}>
+      <Button type="button" variant="secondary" className="mb-3 w-full" onClick={handleGoogleLogin}>
         <GoogleIcon />
         Continue with Google
       </Button>
+      <SuiSignInButton onError={setFormError} />
       {formError && <p className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{formError}</p>}
       <div className="space-y-4">
         <Input label="Email" type="email" value={form.email} error={errors.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />

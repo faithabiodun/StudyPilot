@@ -1,7 +1,11 @@
+from datetime import timedelta
+import secrets
+
 from django.conf import settings
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 import requests
@@ -13,17 +17,32 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.dashboard.services import record_activity, record_login
 from apps.utils import error_response, success_response
 
+from .models import SuiLoginChallenge
 from .serializers import (
     GoogleAuthSerializer,
     LoginSerializer,
     OnboardingSerializer,
     ProfileUpdateSerializer,
     RegisterSerializer,
+    SuiAuthSerializer,
     SupabaseGoogleAuthSerializer,
     UserSerializer,
 )
+from .sui import SuiVerificationError, verify_personal_message
 
 User = get_user_model()
+
+SUI_CHALLENGE_TTL_SECONDS = 300
+
+
+def sui_challenge_message(nonce):
+    """The exact text the wallet signs. Must match on both sides byte for byte."""
+    return (
+        "Sign in to StudyPilot\n\n"
+        "This signature proves you own this wallet. "
+        "It is free and does not create a transaction.\n\n"
+        f"Nonce: {nonce}"
+    )
 
 
 def tokens_for_user(user):
@@ -184,6 +203,84 @@ class SupabaseGoogleAuthView(APIView):
 
         record_login(user)
         return success_response("Google login successful", auth_payload(user))
+
+
+class SuiChallengeView(APIView):
+    """Issue a one-time nonce for a wallet to sign."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        # Opportunistically drop expired rows so the table cannot grow forever.
+        cutoff = timezone.now() - timedelta(seconds=SUI_CHALLENGE_TTL_SECONDS * 4)
+        SuiLoginChallenge.objects.filter(created_at__lt=cutoff).delete()
+
+        challenge = SuiLoginChallenge.objects.create(nonce=secrets.token_hex(16))
+        return success_response("Sui challenge issued", {
+            "nonce": challenge.nonce,
+            "message": sui_challenge_message(challenge.nonce),
+            "expires_in": SUI_CHALLENGE_TTL_SECONDS,
+        })
+
+
+class SuiAuthView(APIView):
+    """Log a wallet in by verifying its signature over our nonce."""
+
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = SuiAuthSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response("Sui login failed", serializer.errors)
+
+        nonce = serializer.validated_data["nonce"]
+        address = serializer.validated_data["address"]
+        signature = serializer.validated_data["signature"]
+
+        # Claim the nonce atomically so two concurrent requests cannot spend the
+        # same challenge, and so a captured signature cannot be replayed.
+        with transaction.atomic():
+            challenge = (
+                SuiLoginChallenge.objects.select_for_update()
+                .filter(nonce=nonce, used_at__isnull=True)
+                .first()
+            )
+            if not challenge:
+                return error_response("This sign-in request has already been used. Please try again.", status_code=status.HTTP_400_BAD_REQUEST)
+            if timezone.now() - challenge.created_at > timedelta(seconds=SUI_CHALLENGE_TTL_SECONDS):
+                challenge.delete()
+                return error_response("This sign-in request expired. Please try again.", status_code=status.HTTP_400_BAD_REQUEST)
+            challenge.used_at = timezone.now()
+            challenge.save(update_fields=["used_at"])
+
+        try:
+            verified_address = verify_personal_message(sui_challenge_message(nonce), signature, address)
+        except SuiVerificationError as exc:
+            return error_response(str(exc), status_code=status.HTTP_401_UNAUTHORIZED)
+
+        user = User.objects.filter(sui_address=verified_address).first()
+        created = False
+        if not user:
+            # A wallet carries no email or name, so stand in placeholders and let
+            # the existing Academic Passport onboarding collect the real details.
+            short = f"{verified_address[:6]}...{verified_address[-4:]}"
+            user = User.objects.create_user(
+                email=f"{verified_address}@sui.studypilot.local",
+                password=None,
+                full_name=f"Sui Wallet {short}",
+                role=User.Role.STUDENT,
+            )
+            user.sui_address = verified_address
+            user.save(update_fields=["sui_address", "updated_at"])
+            created = True
+
+        record_login(user)
+        payload = auth_payload(user)
+        payload["created"] = created
+        payload["sui_address"] = verified_address
+        return success_response("Sui login successful", payload)
 
 
 class LogoutView(APIView):

@@ -44,6 +44,9 @@ _disable_sql = "\n".join(
 
 class Migration(migrations.Migration):
 
+    # Every table named in TABLES needs its creating migration listed here.
+    # The Django-internal apps were missing, so on a fresh database this could
+    # run before django_session / django_admin_log existed and fail outright.
     dependencies = [
         ("accounts", "0003_user_academic_goal_user_career_interest_and_more"),
         ("academics", "0001_initial"),
@@ -54,6 +57,10 @@ class Migration(migrations.Migration):
         ("resources", "0002_savedresource_author_or_channel_and_more"),
         ("dashboard", "0002_usersessionactivity"),
         ("token_blacklist", "0013_alter_blacklistedtoken_options_and_more"),
+        ("auth", "0012_alter_user_first_name_max_length"),
+        ("contenttypes", "0002_remove_content_type_name"),
+        ("sessions", "0001_initial"),
+        ("admin", "0001_initial"),
     ]
 
     operations = [

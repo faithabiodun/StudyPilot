@@ -67,6 +67,29 @@ export async function registerWithEmail(payload) {
   return persistAuthPayload(response);
 }
 
+/**
+ * Ask the backend for a one-time challenge to sign.
+ * The message text comes from the server so both sides sign the exact same
+ * bytes; building it on the client would drift the moment either side changed.
+ */
+export async function requestSuiChallenge() {
+  const response = await apiRequest("/auth/sui/challenge/", {
+    skipAuth: true,
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  return response?.data || response;
+}
+
+export async function loginWithSui({ address, signature, nonce }) {
+  const response = await apiRequest("/auth/sui/", {
+    skipAuth: true,
+    method: "POST",
+    body: JSON.stringify({ address, signature, nonce })
+  });
+  return persistAuthPayload(response);
+}
+
 export async function completeOnboarding(payload) {
   const response = await apiRequest("/auth/complete-onboarding/", {
     method: "POST",

@@ -86,6 +86,12 @@ class SupabaseGoogleAuthSerializer(serializers.Serializer):
     access_token = serializers.CharField()
 
 
+class SuiAuthSerializer(serializers.Serializer):
+    address = serializers.CharField(max_length=66)
+    signature = serializers.CharField()
+    nonce = serializers.CharField(max_length=64)
+
+
 class OnboardingSerializer(serializers.ModelSerializer):
     required_fields = (
         "institution",
