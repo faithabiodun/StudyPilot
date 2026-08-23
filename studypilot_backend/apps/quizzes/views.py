@@ -9,6 +9,7 @@ from apps.documents.models import Document
 from apps.dashboard.services import record_activity
 from apps.ai.services import AIServiceError, generate_pdf_mcqs_with_deepseek, generate_pdf_mixed_quiz_with_deepseek, select_pdf_study_context
 from apps.memory.records import slugify_topic
+from apps.memory.services import generation_focus, record_quiz_attempt, weakness_briefing
 from apps.study_tools.deduplication import deduplicate_questions
 from apps.utils import error_response, success_response
 
@@ -46,11 +47,15 @@ class GenerateQuizView(APIView):
         try:
             requested_count = serializer.validated_data["number_of_questions"]
             context = select_pdf_study_context(generation_text)
+            # Stop generating quizzes about a PDF and start generating quizzes
+            # about what this student keeps getting wrong in that PDF.
+            focus_guidance = generation_focus(weakness_briefing(request.user, source_title))
             generated = generate_pdf_mixed_quiz_with_deepseek(
                 context,
                 serializer.validated_data["difficulty"],
                 requested_count,
                 question_types,
+                focus_guidance=focus_guidance,
             )
             generated_questions = deduplicate_questions(generated.get("questions", []), limit=requested_count)
             if len(generated_questions) < requested_count:
@@ -60,6 +65,7 @@ class GenerateQuizView(APIView):
                     serializer.validated_data["difficulty"],
                     requested_count,
                     question_types,
+                    focus_guidance=focus_guidance,
                 )
                 generated_questions = deduplicate_questions(generated_questions + retry_generated.get("questions", []), limit=requested_count)
         except ImproperlyConfigured as exc:
@@ -212,9 +218,29 @@ class SubmitQuizView(APIView):
             correct += 1 if is_correct else 0
             details.append({
                 "question_id": question.id,
+                "question": question.question,
+                "subtopic": question.subtopic,
                 "selected_answer": selected,
                 "correct_answer": question.correct_answer,
                 "is_correct": is_correct,
                 "explanation": question.explanation,
             })
-        return success_response("Quiz submitted", {"score": correct, "total": total, "percentage": round((correct / total) * 100, 2) if total else 0, "details": details})
+
+        # Persist what was answered, not just what was asked. Never raises: a
+        # memory outage must not stop a student seeing their score.
+        memory = record_quiz_attempt(request.user, quiz, details)
+        record_activity(
+            request.user,
+            "quiz_submitted",
+            "Submitted quiz",
+            f"You scored {correct} of {total} on {quiz.course_title or 'a quiz'}.",
+            {"quiz_id": quiz.id, "score": correct, "total": total, "memories_written": memory.get("written", 0)},
+        )
+
+        return success_response("Quiz submitted", {
+            "score": correct,
+            "total": total,
+            "percentage": round((correct / total) * 100, 2) if total else 0,
+            "details": details,
+            "memory": memory,
+        })

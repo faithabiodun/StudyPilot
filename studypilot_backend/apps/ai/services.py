@@ -208,7 +208,7 @@ Selected PDF context:
     return generate_json_with_deepseek(prompt, system_prompt="You generate high-quality academic MCQs from PDF study context.", temperature=0.25, max_output_tokens=8000)
 
 
-def generate_pdf_mixed_quiz_with_deepseek(context, difficulty, number_of_questions, question_types):
+def generate_pdf_mixed_quiz_with_deepseek(context, difficulty, number_of_questions, question_types, focus_guidance=""):
     prompt = f"""
 Use the selected PDF context to create a smart mixed academic quiz.
 Use only these question types where requested: {", ".join(question_types)}.
@@ -228,6 +228,7 @@ concept rather than the document.
 
 Return JSON exactly like:
 {{"questions":[{{"question_type":"multiple_choice","question":"string","subtopic":"string","options":[{{"option_text":"string","is_correct":true}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}},{{"option_text":"string","is_correct":false}}],"correct_answer":"string","explanation":"string"}},{{"question_type":"true_false","question":"string","subtopic":"string","correct_answer":"True","explanation":"string"}},{{"question_type":"short_answer","question":"string","subtopic":"string","correct_answer":"string","explanation":"string"}},{{"question_type":"theory","question":"string","subtopic":"string","correct_answer":"string","explanation":"string"}}]}}
+{focus_guidance}
 
 Selected PDF context:
 {context}

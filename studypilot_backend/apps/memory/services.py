@@ -14,7 +14,7 @@ from datetime import date
 
 from django.conf import settings
 
-from .records import SEVERITY_WEIGHTS, build_hit, build_miss, parse, slugify_topic
+from .records import SEVERITY_WEIGHTS, build_hit, build_miss, misconception_of, parse, slugify_topic
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,66 @@ def record_quiz_attempt(user, quiz, details, on=None):
         logger.warning("Walrus memory write failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
 
     return summary
+
+
+def misconception_context(user, query, course_titles, per_namespace_limit=10, max_courses=4, max_lines=6):
+    """Past misconceptions relevant to what the student just asked.
+
+    This is what makes StudyPilot and a Claude Code session on the same
+    namespace behave like one assistant rather than two. Returns "" on any
+    failure so the advisor still answers.
+    """
+    if not memwal_enabled():
+        return ""
+    lines = []
+    try:
+        for course in (course_titles or [])[:max_courses]:
+            namespace = namespace_for(user, course)
+            texts, _ = _recall_texts(_client(namespace), namespace, query, limit=per_namespace_limit)
+            by_topic = defaultdict(list)
+            for text in texts:
+                record = parse(text)
+                if record and record.kind == "MISS" and record.topic:
+                    by_topic[record.topic].append(record)
+            for topic, records in by_topic.items():
+                last = max(r.on for r in records)
+                belief = misconception_of(max(records, key=lambda r: r.on).text)
+                lines.append(
+                    f"- {topic}: missed {len(records)} time(s), most recently {last.isoformat()}."
+                    + (f" Their stored misconception: {belief}." if belief else "")
+                )
+    except Exception as exc:
+        logger.warning("Walrus memory advisor recall failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
+        return ""
+    return "\n".join(lines[:max_lines])
+
+
+def generation_focus(briefing):
+    """Turn a briefing into prompt guidance, roughly 60/30/10.
+
+    Returns "" when there is no history, so a first quiz is generated exactly as
+    it was before memory existed.
+    """
+    if not briefing or not briefing.get("enabled"):
+        return ""
+    weak = [item["topic"] for item in briefing.get("weak_topics", [])]
+    spot = [item["topic"] for item in briefing.get("spot_check", [])]
+    if not weak and not spot:
+        return ""
+
+    lines = ["", "This student has a mistake history with this material. Weight the quiz:"]
+    if weak:
+        lines.append(f"- About 60 percent of questions should target these previously missed subtopics: {', '.join(weak)}.")
+    lines.append("- About 30 percent should cover new material from the context.")
+    if spot:
+        lines.append(f"- About 10 percent should spot check these previously mastered subtopics: {', '.join(spot)}.")
+    # Without this the model will happily invent a question about a remembered
+    # topic that this particular document never covers.
+    lines.append(
+        "Only use concepts that actually appear in the provided context. If a listed "
+        "subtopic is absent from the context, skip it rather than inventing content."
+    )
+    return "\n".join(lines)
 
 
 def _weakness_score(misses, severity, last_missed, today):

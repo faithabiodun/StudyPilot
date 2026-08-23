@@ -8,6 +8,7 @@ from apps.documents.rag import retrieve_relevant_chunks
 from apps.documents.services import clean_extracted_text
 from apps.resources.services import get_combined_recommendations
 from apps.ai.services import AIServiceError, generate_text_with_deepseek
+from apps.memory.services import misconception_context
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +179,14 @@ def pdf_context(user, message, intent, document_id=None):
         return "", False
 
 
-def advisor_prompt(message, intent, profile_context, pdf_context_text, resources_text):
+def advisor_prompt(message, intent, profile_context, pdf_context_text, resources_text, memory_context=""):
+    memory_block = f"""
+This student has previously got these things wrong. If the question touches one of
+them, open by naming it, say how many times and when they last missed it, and quote
+the stored misconception as written rather than softening it, then correct it. If
+the question is unrelated to this list, ignore this section completely.
+{memory_context}
+""" if memory_context else ""
     return f"""
 You are StudyPilot, a student academic advisor. Answer the student's actual question directly.
 Do not mention internal context, profiles, tools, or process. Do not say "I will".
@@ -187,7 +195,7 @@ For concept questions: define, explain key points, give an example, and add an e
 For study plans: give a practical timetable or checklist.
 For resources: include the provided links when available.
 For uploaded PDFs: use the provided PDF context when available.
-
+{memory_block}
 Student background, if useful:
 {profile_context}
 
@@ -399,7 +407,10 @@ def generate_advisor_response(user, message, document_id=None):
     profile_context = academic_passport_context(user)
     pdf_context_text, used_pdf = pdf_context(user, message, intent, document_id)
     resources_text, used_resources = resource_context(message, intent)
-    prompt = advisor_prompt(message, intent, profile_context, pdf_context_text, resources_text)
+    # Recall this student's own past mistakes so the advisor corrects the
+    # misconception it already knows about instead of re-teaching from scratch.
+    memory_text = misconception_context(user, message, getattr(user, "current_courses", None) or [])
+    prompt = advisor_prompt(message, intent, profile_context, pdf_context_text, resources_text, memory_text)
 
     try:
         response = clean_extracted_text(generate_text_with_deepseek(

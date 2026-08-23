@@ -244,3 +244,81 @@ class DisabledMemoryTests(SimpleTestCase):
             brief = services.weakness_briefing(_StubUser(1), "Pharmacology")
         self.assertIn("relayer unreachable", summary["error"])
         self.assertIn("relayer unreachable", brief["error"])
+
+
+# --- Steps 5 and 6: prompt weighting and advisor recall ---
+
+from .records import misconception_of  # noqa: E402
+
+
+class MisconceptionExtractionTests(SimpleTestCase):
+    def test_misconception_is_returned_verbatim(self):
+        text = build_miss(
+            "ns", "topic", "q", "propranolol",
+            "thought every beta blocker acts the same", "atenolol is beta-1 selective", on=ON,
+        )
+        self.assertEqual(misconception_of(text), "thought every beta blocker acts the same")
+
+    def test_missing_misconception_gives_empty_string(self):
+        self.assertEqual(misconception_of("HIT | ns | topic | 2026-08-22"), "")
+        self.assertEqual(misconception_of(""), "")
+
+
+class GenerationFocusTests(SimpleTestCase):
+    def test_no_history_produces_no_guidance(self):
+        """A first quiz must be generated exactly as it was before memory existed."""
+        self.assertEqual(services.generation_focus({"enabled": True, "weak_topics": [], "spot_check": []}), "")
+        self.assertEqual(services.generation_focus({"enabled": False}), "")
+        self.assertEqual(services.generation_focus(None), "")
+
+    def test_weak_topics_drive_the_sixty_percent(self):
+        guidance = services.generation_focus({
+            "enabled": True,
+            "weak_topics": [{"topic": "beta-blocker-selectivity"}, {"topic": "ace-inhibitors"}],
+            "spot_check": [{"topic": "diuretics"}],
+        })
+        self.assertIn("60 percent", guidance)
+        self.assertIn("beta-blocker-selectivity", guidance)
+        self.assertIn("ace-inhibitors", guidance)
+        self.assertIn("30 percent", guidance)
+        self.assertIn("10 percent", guidance)
+        self.assertIn("diuretics", guidance)
+
+    def test_guidance_forbids_inventing_absent_topics(self):
+        guidance = services.generation_focus({
+            "enabled": True, "weak_topics": [{"topic": "x"}], "spot_check": [],
+        })
+        self.assertIn("skip it rather than inventing", guidance)
+
+
+class MisconceptionContextTests(SimpleTestCase):
+    def setUp(self):
+        self.user = _StubUser(1)
+        self.ns = "sp-u1-pharmacology"
+
+    def test_context_names_topic_count_and_stored_belief(self):
+        texts = [
+            build_miss(self.ns, "beta-blocker-selectivity", "q1", "propranolol",
+                       "thought every beta blocker acts the same", "atenolol is selective",
+                       on=date(2026, 8, 1)),
+            build_miss(self.ns, "beta-blocker-selectivity", "q2", "propranolol",
+                       "still assuming they are interchangeable", "atenolol is selective",
+                       on=date(2026, 8, 20)),
+        ]
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=_seeded_client(self.ns, texts)):
+            out = services.misconception_context(self.user, "explain beta blockers", ["Pharmacology"])
+        self.assertIn("beta-blocker-selectivity", out)
+        self.assertIn("missed 2 time(s)", out)
+        self.assertIn("2026-08-20", out)
+        self.assertIn("still assuming they are interchangeable", out)
+
+    def test_disabled_memory_gives_empty_context(self):
+        with patch.object(services, "memwal_enabled", return_value=False):
+            self.assertEqual(services.misconception_context(self.user, "q", ["Pharmacology"]), "")
+
+    def test_failure_degrades_to_empty_not_an_exception(self):
+        boom = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("relayer down"))
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", side_effect=boom):
+            self.assertEqual(services.misconception_context(self.user, "q", ["Pharmacology"]), "")

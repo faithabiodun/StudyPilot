@@ -37,6 +37,7 @@ _HEADER = re.compile(
 
 _SEVERITY = re.compile(r"sev:\s*(high|medium|low)", re.IGNORECASE)
 _EXPIRES = re.compile(r"expires:\s*(\d{4}-\d{2}-\d{2})")
+_MISCONCEPTION = re.compile(r"My misconception:\s*(.+?)(?:\n|$)", re.IGNORECASE | re.DOTALL)
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,16 @@ def build_session(namespace, topics, drilled, new_misses, hits, on=None):
         f"SESSION | {namespace} | {_on(on)} | drilled:{drilled} new_misses:{new_misses} hits:{hits}\n"
         f"Topics: {slugs}"
     )
+
+
+def misconception_of(text):
+    """Pull the stored misconception out of a MISS record, verbatim.
+
+    Quoting it back unchanged is the point: paraphrasing it into something
+    softer loses the exact wrong model the student had.
+    """
+    match = _MISCONCEPTION.search(str(text or ""))
+    return match.group(1).strip().rstrip(".") if match else ""
 
 
 def parse(text):

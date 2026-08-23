@@ -104,6 +104,7 @@ urlpatterns = [
     path("api/resources/", include("apps.resources.urls")),
     path("api/advisor/", include("apps.advisor.urls")),
     path("api/dashboard/", include("apps.dashboard.urls")),
+    path("api/memory/", include("apps.memory.urls")),
     path("api/activity/heartbeat/", HeartbeatView.as_view(), name="activity_heartbeat"),
     path("api/admin/", include("apps.dashboard.admin_urls")),
 ]
