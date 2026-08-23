@@ -107,8 +107,12 @@ textarea {
   perspective: 1600px;
 }
 
+/* Both faces share one grid cell, so the card grows to fit whichever is taller.
+   Absolutely positioned faces contribute no height, which clipped long answers
+   on narrow screens where the text wraps to many more lines. */
 .flip-card {
   position: relative;
+  display: grid;
   transform-style: preserve-3d;
   transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -118,8 +122,7 @@ textarea {
 }
 
 .flip-face {
-  position: absolute;
-  inset: 0;
+  grid-area: 1 / 1;
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
   display: flex;

@@ -99,20 +99,20 @@ function FlashcardDeck({ cards }) {
           className={`flip-card min-h-[260px] w-full cursor-pointer select-none rounded-[1.75rem] ${flipped ? "is-flipped" : ""}`}
         >
           {/* Front */}
-          <div className="flip-face overflow-hidden rounded-[1.75rem] border border-pilot-line bg-gradient-to-br from-white to-pilot-sky p-7 shadow-soft">
+          <div className="flip-face overflow-hidden rounded-[1.75rem] border border-pilot-line bg-gradient-to-br from-white to-pilot-sky p-5 shadow-soft sm:p-7">
             <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-pilot-soft px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-pilot-blue">
               <Sparkles size={13} /> Question
             </span>
-            <p className="mt-5 flex-1 text-xl font-black leading-8 text-pilot-ink">{card.question}</p>
-            <p className="mt-4 text-sm font-bold text-pilot-muted">Tap card or press Space to flip</p>
+            <p className="mt-4 flex-1 break-words text-lg font-black leading-7 text-pilot-ink sm:mt-5 sm:text-xl sm:leading-8">{card.question}</p>
+            <p className="mt-4 text-xs font-bold text-pilot-muted sm:text-sm">Tap card or press Space to flip</p>
           </div>
           {/* Back */}
-          <div className="flip-face flip-face-back overflow-hidden rounded-[1.75rem] border border-pilot-blue bg-gradient-to-br from-pilot-blue to-blue-700 p-7 text-white shadow-glow">
+          <div className="flip-face flip-face-back overflow-hidden rounded-[1.75rem] border border-pilot-blue bg-gradient-to-br from-pilot-blue to-blue-700 p-5 text-white shadow-glow sm:p-7">
             <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-white">
               <Check size={13} /> Answer
             </span>
-            <p className="mt-5 flex-1 text-lg font-bold leading-8">{card.answer}</p>
-            <p className="mt-4 text-sm font-bold text-blue-100">Tap to see the question again</p>
+            <p className="mt-4 flex-1 break-words text-base font-bold leading-7 sm:mt-5 sm:text-lg sm:leading-8">{card.answer}</p>
+            <p className="mt-4 text-xs font-bold text-blue-100 sm:text-sm">Tap to see the question again</p>
           </div>
         </div>
       </div>

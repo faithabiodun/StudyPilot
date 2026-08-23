@@ -70,7 +70,9 @@ export default function AIAdvisorPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="rounded-[1.75rem] border border-pilot-line bg-white p-4 shadow-soft">
-          <div className="scrollbar-soft flex h-[660px] flex-col gap-4 overflow-y-auto rounded-[1.35rem] bg-pilot-ice p-4">
+          {/* Sized to the viewport on small screens; a flat 660px overflowed
+              short phones and pushed the composer below the fold. */}
+          <div className="scrollbar-soft flex h-[55vh] min-h-[320px] flex-col gap-4 overflow-y-auto rounded-[1.35rem] bg-pilot-ice p-3 sm:p-4 lg:h-[660px]">
             {messages.map((message, index) => <ChatBubble key={`${message.role}-${index}`} role={message.role}>{message.text}</ChatBubble>)}
             {loading && <div className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-pilot-blue shadow-soft">StudyPilot is writing a response...</div>}
           </div>
