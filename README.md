@@ -1,14 +1,11 @@
 # StudyPilot: An AI study workspace for students
 
-StudyPilot is a student academic workspace with a React Vite frontend and a
-Django REST Framework backend. It turns your study materials, PDFs and YouTube
+StudyPilot is a student academic workspace. It turns your study materials, PDFs and YouTube
 lectures, into flashcards, quizzes, and Word study notes, and it ships an AI
 Advisor, a Resource Hub, Academic Passport onboarding, and full account and
 profile management on top of Django JWT auth and Supabase Google OAuth.
 
 - **Live app:** https://nowstudypilot.onrender.com
-- **Backend API:** https://studypilotbackend-production-d343.up.railway.app/api
-- **Health check:** https://studypilotbackend-production-d343.up.railway.app/api/health/
 
 ## What is StudyPilot?
 
@@ -33,46 +30,6 @@ profile management on top of Django JWT auth and Supabase Google OAuth.
   connection does not surface as a failed feature. The backend itself runs
   always on, so there is no idle spin down to wait for.
 
-## Stacks
-
-### Frontend
-
-| Tool | Version | Role |
-| --- | --- | --- |
-| React | ^19.0.0 | UI library |
-| Vite | ^6.0.7 | Build tool and dev server |
-| Tailwind CSS | ^3.4.17 | Styling |
-| React Router | ^7.1.1 | Routing |
-| Recharts | ^3.8.1 | Dashboard charts |
-| @supabase/supabase-js | ^2.105.4 | Supabase Google OAuth client |
-| lucide-react | ^0.468.0 | Icons |
-| PostCSS and Autoprefixer | ^8.4.49 and ^10.4.20 | CSS pipeline |
-
-### Backend
-
-| Tool | Version | Role |
-| --- | --- | --- |
-| Django | 6.0.5 | Web framework |
-| Django REST Framework | 3.17.1 | REST API |
-| djangorestframework-simplejwt | 5.5.1 | JWT auth |
-| drf-spectacular | 0.29.0 | OpenAPI schema and docs |
-| dj-database-url | 3.1.2 | `DATABASE_URL` parsing |
-| psycopg2-binary | 2.9.12 | PostgreSQL driver |
-| openai | 2.37.0 | OpenAI compatible client (DeepSeek) |
-| PyMuPDF and pdfplumber | 1.27.2.3 and 0.11.9 | PDF text extraction |
-| python-docx | 1.1.2 | Word (DOCX) generation |
-| youtube-transcript-api | 0.6.2 | YouTube transcript fetching |
-| requests | 2.32.5 | HTTP (timedtext and metadata fallbacks) |
-| gunicorn and whitenoise | 26.0.0 and 6.12.0 | Production server and static files |
-| Pillow | 12.0.0 | Image support |
-
-### Platform
-
-- **Database:** Supabase PostgreSQL through `DATABASE_URL`
-- **OAuth:** Supabase Google OAuth, exchanged for a Django JWT
-- **AI provider:** DeepSeek V4 Flash through the OpenAI compatible client
-- **Resource Hub:** YouTube Data API, Google Books API, OpenAlex
-- **Hosting:** Render (frontend static site) and Railway (backend web service)
 
 ## Features at a glance
 
