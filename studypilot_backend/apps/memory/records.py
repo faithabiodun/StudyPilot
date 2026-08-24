@@ -39,6 +39,7 @@ _SEVERITY = re.compile(r"sev:\s*(high|medium|low)", re.IGNORECASE)
 _EXPIRES = re.compile(r"expires:\s*(\d{4}-\d{2}-\d{2})")
 _MISCONCEPTION = re.compile(r"My misconception:\s*(.+?)(?:\n|$)", re.IGNORECASE | re.DOTALL)
 _SOURCE = re.compile(r"source:\s*([a-z0-9_]+)", re.IGNORECASE)
+_MINUTES = re.compile(r"minutes:\s*(\d+)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -133,12 +134,18 @@ def build_pattern(pattern_name, body, subjects, on=None):
     )
 
 
-def build_session(namespace, topics, drilled, new_misses, hits, on=None):
+def build_session(namespace, topics, drilled, new_misses, hits, minutes=0, on=None):
     slugs = ", ".join(slugify_topic(topic) for topic in topics if slugify_topic(topic))
     return (
-        f"SESSION | {namespace} | {_on(on)} | drilled:{drilled} new_misses:{new_misses} hits:{hits}\n"
+        f"SESSION | {namespace} | {_on(on)} | drilled:{drilled} new_misses:{new_misses} hits:{hits} minutes:{minutes}\n"
         f"Topics: {slugs}"
     )
+
+
+def minutes_of(text):
+    """Minutes studied from a SESSION header, 0 when absent."""
+    match = _MINUTES.search(str(text or ""))
+    return int(match.group(1)) if match else 0
 
 
 def misconception_of(text):

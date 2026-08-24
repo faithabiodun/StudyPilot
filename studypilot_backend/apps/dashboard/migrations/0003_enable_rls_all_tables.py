@@ -34,12 +34,26 @@ TABLES = [
     "dashboard_usersessionactivity",
 ]
 
-_enable_sql = "\n".join(
-    f"ALTER TABLE {t} ENABLE ROW LEVEL SECURITY;" for t in TABLES
-)
-_disable_sql = "\n".join(
-    f"ALTER TABLE {t} DISABLE ROW LEVEL SECURITY;" for t in TABLES
-)
+def _set_rls(schema_editor, enable):
+    """Row level security is PostgreSQL only.
+
+    Guarded by vendor so the suite can run against SQLite, which cannot parse
+    ALTER TABLE ... ENABLE ROW LEVEL SECURITY and fails the whole migration.
+    """
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    action = "ENABLE" if enable else "DISABLE"
+    with schema_editor.connection.cursor() as cursor:
+        for table in TABLES:
+            cursor.execute(f"ALTER TABLE {table} {action} ROW LEVEL SECURITY;")
+
+
+def enable_rls(apps, schema_editor):
+    _set_rls(schema_editor, True)
+
+
+def disable_rls(apps, schema_editor):
+    _set_rls(schema_editor, False)
 
 
 class Migration(migrations.Migration):
@@ -64,8 +78,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(
-            sql=_enable_sql,
-            reverse_sql=_disable_sql,
-        ),
+        migrations.RunPython(enable_rls, disable_rls),
     ]

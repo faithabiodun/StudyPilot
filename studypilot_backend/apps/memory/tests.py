@@ -394,3 +394,59 @@ class MaterialContextTests(SimpleTestCase):
              patch.object(services, "_client", side_effect=boom):
             self.assertEqual(services.material_context(self.user, "q"), "")
             self.assertEqual(services.remember_material(self.user, "pdf", "T")["written"], 0)
+
+
+# --- Study days: one SESSION record per finished day ---
+
+from .records import build_session as _build_session, minutes_of  # noqa: E402
+
+
+class SessionMinutesTests(SimpleTestCase):
+    def test_session_carries_minutes_and_still_has_no_topic(self):
+        text = _build_session("sp-u1-studied", ["beta-blockers"], drilled=10, new_misses=2, hits=3, minutes=47, on=ON)
+        record = parse(text)
+        self.assertEqual(record.kind, "SESSION")
+        self.assertEqual(record.topic, "")
+        self.assertEqual(record.on, ON)
+        self.assertEqual(minutes_of(text), 47)
+
+    def test_minutes_absent_reads_as_zero(self):
+        self.assertEqual(minutes_of("SESSION | ns | 2026-08-22 | drilled:1 new_misses:0 hits:0"), 0)
+
+
+class StudyHistoryTests(SimpleTestCase):
+    def setUp(self):
+        self.user = _StubUser(1)
+        self.ns = "sp-u1-studied"
+
+    def test_history_totals_minutes_across_days(self):
+        texts = [
+            _build_session(self.ns, [], 0, 0, 0, minutes=30, on=date(2026, 8, 20)),
+            _build_session(self.ns, [], 0, 0, 0, minutes=45, on=date(2026, 8, 21)),
+            _build_session(self.ns, [], 0, 0, 0, minutes=25, on=date(2026, 8, 22)),
+        ]
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=_seeded_client(self.ns, texts)):
+            history = services.study_history(self.user)
+        self.assertEqual(history["total_minutes"], 100)
+        self.assertEqual([d["date"] for d in history["days"]], ["2026-08-20", "2026-08-21", "2026-08-22"])
+
+    def test_material_records_are_not_counted_as_study_days(self):
+        texts = [
+            build_material(self.ns, "topic", "pdf", "Notes.pdf", "", on=date(2026, 8, 20)),
+            _build_session(self.ns, [], 0, 0, 0, minutes=15, on=date(2026, 8, 21)),
+        ]
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=_seeded_client(self.ns, texts)):
+            history = services.study_history(self.user)
+        self.assertEqual(len(history["days"]), 1)
+        self.assertEqual(history["total_minutes"], 15)
+
+    def test_disabled_and_failure_degrade_safely(self):
+        with patch.object(services, "memwal_enabled", return_value=False):
+            self.assertEqual(services.study_history(self.user)["days"], [])
+        boom = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("relayer down"))
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", side_effect=boom):
+            self.assertEqual(services.study_history(self.user)["days"], [])
+            self.assertEqual(services.remember_session(self.user, ON, 30)["written"], 0)

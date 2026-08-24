@@ -19,6 +19,8 @@ from .records import (
     build_hit,
     build_material,
     build_miss,
+    build_session,
+    minutes_of,
     misconception_of,
     parse,
     slugify_topic,
@@ -190,6 +192,64 @@ def remember_material(user, source_type, title, topic="", summary="", reference=
     except Exception as exc:
         logger.warning("Walrus material write failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
         return {"enabled": True, "written": 0, "error": str(exc)}
+
+
+def remember_session(user, on, minutes, topics=None, drilled=0, new_misses=0, hits=0):
+    """Roll a finished study day into one SESSION record. Never raises.
+
+    Written once per day, after the day is over, because the store is
+    append-only: writing on every heartbeat would append hundreds of
+    near-identical records and make the day impossible to count.
+    """
+    if not memwal_enabled():
+        return {"enabled": False, "written": 0, "error": ""}
+    try:
+        from memwal import RememberBulkItem
+
+        namespace = study_namespace_for(user)
+        text = build_session(
+            namespace=namespace,
+            topics=topics or [],
+            drilled=drilled,
+            new_misses=new_misses,
+            hits=hits,
+            minutes=minutes,
+            on=on,
+        )
+        _client(namespace).remember_bulk_async([RememberBulkItem(text=text, namespace=namespace)])
+        return {"enabled": True, "written": 1, "error": ""}
+    except Exception as exc:
+        logger.warning("Walrus session write failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
+        return {"enabled": True, "written": 0, "error": str(exc)}
+
+
+def study_history(user, limit=RECALL_LIMIT):
+    """Days studied, recalled from memory rather than the local database.
+
+    This is the part that survives the database: the record of how much a
+    student actually showed up lives on Walrus.
+    """
+    if not memwal_enabled():
+        return {"enabled": False, "days": [], "total_minutes": 0, "error": ""}
+    try:
+        namespace = study_namespace_for(user)
+        texts, _ = _recall_texts(_client(namespace), namespace, "study session minutes", limit=limit)
+        days = []
+        for text in texts:
+            record = parse(text)
+            if not record or record.kind != "SESSION":
+                continue
+            days.append({"date": record.on.isoformat(), "minutes": minutes_of(record.text)})
+        days.sort(key=lambda item: item["date"])
+        return {
+            "enabled": True,
+            "days": days,
+            "total_minutes": sum(day["minutes"] for day in days),
+            "error": "",
+        }
+    except Exception as exc:
+        logger.warning("Walrus study history failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
+        return {"enabled": True, "days": [], "total_minutes": 0, "error": str(exc)}
 
 
 def material_context(user, query, limit=RECALL_LIMIT, max_lines=6):

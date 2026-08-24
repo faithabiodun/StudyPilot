@@ -38,6 +38,9 @@ class UserSessionActivity(models.Model):
     started_at = models.DateTimeField()
     last_seen_at = models.DateTimeField()
     duration_seconds = models.PositiveIntegerField(default=0)
+    # Walrus Memory is append-only, so a day may only be written once. Set once
+    # the finished day has been rolled up into a SESSION record.
+    memory_written = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

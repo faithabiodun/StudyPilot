@@ -3,7 +3,16 @@ from rest_framework.views import APIView
 
 from apps.utils import success_response
 
-from .services import weakness_briefing
+from .services import study_history, weakness_briefing
+
+
+class StudyHistoryView(APIView):
+    """Days studied, read back out of Walrus rather than the local database."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return success_response("Study history", study_history(request.user))
 
 
 class WeaknessBriefingView(APIView):
