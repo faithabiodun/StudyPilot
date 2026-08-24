@@ -4,6 +4,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from apps.dashboard.services import record_activity
+from apps.memory.services import remember_material
 from apps.documents.services import clean_safe_string
 from apps.utils import error_response, success_response
 
@@ -29,6 +30,16 @@ class RecommendationsView(APIView):
             f"You searched {resource_type} resources for {query or 'study resources'}.",
             {"query": query, "type": resource_type, "results_count": data.get("count", 0)},
         )
+        # Only worth remembering if the student typed something real and it
+        # found matches; partial words on the way to a query are noise.
+        if len(query) >= 3 and data.get("count", 0) > 0:
+            remember_material(
+                request.user,
+                source_type="search",
+                title=f"Looked for {resource_type} resources on {query}",
+                topic=query,
+                summary=f"{data.get('count', 0)} results",
+            )
         return success_response("Resources fetched successfully", data)
 
 
@@ -63,6 +74,14 @@ class SaveResourceView(APIView):
             f"You saved {cleaned['title']}.",
             {"url": cleaned["url"], "resource_type": cleaned["resource_type"]},
         )
+        remember_material(
+            request.user,
+            source_type="saved",
+            title=cleaned["title"],
+            topic=cleaned["course_title"] or cleaned["title"],
+            summary=cleaned["description"][:200],
+            reference=cleaned["url"],
+        )
         return success_response("Resource saved", SavedResourceSerializer(resource).data, status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
@@ -82,6 +101,13 @@ class TrackResourceOpenView(APIView):
             "Opened Resource",
             f"You opened {title}.",
             {"url": url, "resource_type": resource_type, "source_name": source_name},
+        )
+        remember_material(
+            request.user,
+            source_type="opened",
+            title=title,
+            summary=f"{resource_type} from {source_name}" if source_name else resource_type,
+            reference=url,
         )
         return success_response("Resource open tracked", {"tracked": True})
 

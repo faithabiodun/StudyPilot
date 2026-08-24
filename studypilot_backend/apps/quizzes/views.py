@@ -9,7 +9,7 @@ from apps.documents.models import Document
 from apps.dashboard.services import record_activity
 from apps.ai.services import AIServiceError, generate_pdf_mcqs_with_deepseek, generate_pdf_mixed_quiz_with_deepseek, select_pdf_study_context
 from apps.memory.records import slugify_topic
-from apps.memory.services import generation_focus, record_quiz_attempt, weakness_briefing
+from apps.memory.services import generation_focus, record_quiz_attempt, remember_material, weakness_briefing
 from apps.study_tools.deduplication import deduplicate_questions
 from apps.utils import error_response, success_response
 
@@ -106,6 +106,13 @@ class GenerateQuizView(APIView):
             f"You generated {quiz.questions.count()} mixed quiz questions from {document.title}.",
             {"document_id": document.id, "quiz_id": quiz.id, "count": quiz.questions.count()},
         )
+        remember_material(
+            request.user,
+            source_type="quiz",
+            title=f"{source_title} mixed quiz ({quiz.questions.count()} questions)",
+            topic=source_title,
+            summary=f"generated from {document.title}",
+        )
         message = "Mixed quiz generated successfully"
         if quiz.questions.count() < requested_count:
             message = "StudyPilot generated the strongest unique questions available from this PDF."
@@ -184,6 +191,13 @@ class GenerateMCQView(APIView):
             "Generated MCQ Quiz",
             f"You generated {quiz.questions.count()} MCQs from {document.title}.",
             {"document_id": document.id, "quiz_id": quiz.id, "count": quiz.questions.count()},
+        )
+        remember_material(
+            request.user,
+            source_type="mcq",
+            title=f"{source_title} MCQ quiz ({quiz.questions.count()} questions)",
+            topic=source_title,
+            summary=f"generated from {document.title}",
         )
         message = "MCQ quiz generated successfully"
         if quiz.questions.count() < requested_count:
