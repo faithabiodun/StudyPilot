@@ -450,3 +450,50 @@ class StudyHistoryTests(SimpleTestCase):
              patch.object(services, "_client", side_effect=boom):
             self.assertEqual(services.study_history(self.user)["days"], [])
             self.assertEqual(services.remember_session(self.user, ON, 30)["written"], 0)
+
+
+# --- MystenLabs/MemWal#741: recall always returns top-k regardless of relevance ---
+
+class RecallDistanceTests(SimpleTestCase):
+    """max_distance must be sent where relevance matters, and withheld where we
+    are counting. Filtering a counting pass would undercount misses."""
+
+    def setUp(self):
+        self.user = _StubUser(1)
+
+    def _spy(self):
+        calls = []
+
+        class SpyClient:
+            def recall(self, query, **kwargs):
+                calls.append(kwargs)
+                class R:
+                    results = []
+                return R()
+
+        return SpyClient(), calls
+
+    def test_advisor_recalls_filter_by_relevance(self):
+        client, calls = self._spy()
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=client):
+            services.misconception_context(self.user, "beta blockers", ["Pharmacology"])
+            services.material_context(self.user, "beta blockers")
+        self.assertTrue(calls, "expected recall to be called")
+        for kwargs in calls:
+            self.assertEqual(kwargs.get("max_distance"), services.MAX_RECALL_DISTANCE)
+
+    def test_counting_recalls_do_not_filter(self):
+        client, calls = self._spy()
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=client):
+            services.weakness_briefing(self.user, "Pharmacology")
+            services.study_history(self.user)
+        self.assertTrue(calls, "expected recall to be called")
+        for kwargs in calls:
+            self.assertNotIn("max_distance", kwargs, "counting passes must see every record")
+
+    def test_threshold_sits_between_measured_on_topic_and_unrelated(self):
+        """Measured live: on-topic 0.35-0.64, unrelated 0.84+."""
+        self.assertGreater(services.MAX_RECALL_DISTANCE, 0.64)
+        self.assertLess(services.MAX_RECALL_DISTANCE, 0.84)

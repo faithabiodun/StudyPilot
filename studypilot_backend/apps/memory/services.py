@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 
 BULK_CHUNK = 20          # remember_bulk accepts 1-20 items
 RECALL_LIMIT = 50        # the API default of 10 would make a "top 5" a top-5-of-10
+# recall returns its top-k regardless of relevance, so an unrelated question
+# still gets k records back. Measured on a live namespace: on-topic hits land
+# at 0.35-0.64 cosine distance, unrelated ones at 0.84 and above. 0.70 sits in
+# the gap with margin either side. See MystenLabs/MemWal#741.
+MAX_RECALL_DISTANCE = 0.70
 RECENCY_HALF_LIFE_DAYS = 30
 TOP_TOPICS = 5
 
@@ -79,10 +84,23 @@ def _chunks(items, size=BULK_CHUNK):
         yield items[start : start + size]
 
 
-def _recall_texts(client, namespace, query, limit=RECALL_LIMIT):
+def _recall_texts(client, namespace, query, limit=RECALL_LIMIT, max_distance=None):
     """Return (texts, truncated). Truncated means recall came back full, so the
-    caller is ranking over a sample rather than everything stored."""
-    result = client.recall(query, limit=limit, namespace=namespace)
+    caller is ranking over a sample rather than everything stored.
+
+    `max_distance` is only passed when relevance is what we are after. recall
+    always returns its top-k, so without it an unrelated question still gets k
+    records back, and the advisor would cheerfully cite them. Measured against a
+    real namespace: on-topic hits sit at 0.35-0.64, unrelated ones at 0.84+.
+
+    Counting passes (the briefing, study history) deliberately omit it: they
+    want every record in the namespace, and filtering by relevance to a generic
+    query would undercount misses and drop study days.
+    """
+    kwargs = {"limit": limit, "namespace": namespace}
+    if max_distance is not None:
+        kwargs["max_distance"] = max_distance
+    result = client.recall(query, **kwargs)
     texts = [item.text for item in getattr(result, "results", []) or []]
     return texts, len(texts) >= limit
 
@@ -258,7 +276,7 @@ def material_context(user, query, limit=RECALL_LIMIT, max_lines=6):
         return ""
     try:
         namespace = study_namespace_for(user)
-        texts, _ = _recall_texts(_client(namespace), namespace, query, limit=limit)
+        texts, _ = _recall_texts(_client(namespace), namespace, query, limit=limit, max_distance=MAX_RECALL_DISTANCE)
         lines = []
         for text in texts:
             record = parse(text)
@@ -294,7 +312,7 @@ def misconception_context(user, query, course_titles, per_namespace_limit=10, ma
     try:
         for course in (course_titles or [])[:max_courses]:
             namespace = namespace_for(user, course)
-            texts, _ = _recall_texts(_client(namespace), namespace, query, limit=per_namespace_limit)
+            texts, _ = _recall_texts(_client(namespace), namespace, query, limit=per_namespace_limit, max_distance=MAX_RECALL_DISTANCE)
             by_topic = defaultdict(list)
             for text in texts:
                 record = parse(text)

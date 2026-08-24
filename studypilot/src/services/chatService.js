@@ -1,36 +1,30 @@
-import { API_BASE_URL } from "./api";
+import { apiRequest } from "./api";
 
+/**
+ * Ask the advisor. Routed through apiRequest so an expired access token is
+ * refreshed and the call retried; this used a raw fetch and so silently 401ed
+ * once the hour was up.
+ *
+ * Passing sessionId continues an existing conversation instead of starting a
+ * new one, which is what the recent chats list relies on.
+ */
 export function sendChatMessage(message, options = {}) {
-  const token = localStorage.getItem("studypilot_access_token");
-  const payload = {
-    message,
-    ...(options.documentId ? { document_id: options.documentId } : {})
-  };
-  const url = `${API_BASE_URL}/advisor/chat/`;
-
-  if (import.meta.env.DEV) {
-    console.debug("[StudyPilot Advisor] endpoint", url);
-    console.debug("[StudyPilot Advisor] access token exists", Boolean(token));
-    console.debug("[StudyPilot Advisor] message length", message?.length || 0);
-  }
-
-  return fetch(url, {
+  return apiRequest("/advisor/chat/", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(payload)
-  }).then(async (response) => {
-    const body = await response.json().catch(() => null);
-    if (import.meta.env.DEV) {
-      console.debug("[StudyPilot Advisor] response status", response.status);
-    }
-    if (!response.ok) {
-      const errors = body?.errors || {};
-      const firstError = Object.values(errors).flat?.()[0] || errors.non_field_errors;
-      throw new Error(firstError || body?.message || body?.detail || "Advisor service failed to generate a response.");
-    }
-    return body;
+    body: JSON.stringify({
+      message,
+      ...(options.sessionId ? { session_id: options.sessionId } : {}),
+      ...(options.documentId ? { document_id: options.documentId } : {})
+    })
   });
+}
+
+export function fetchChatSessions() {
+  // An empty list is a fine outcome for a new student, so never surface a
+  // failure here as an error in the chat panel.
+  return apiRequest("/advisor/sessions/", {}, { data: [] });
+}
+
+export function fetchChatSession(sessionId) {
+  return apiRequest(`/advisor/sessions/${sessionId}/`);
 }

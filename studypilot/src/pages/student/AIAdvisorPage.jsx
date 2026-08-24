@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ChatBubble from "../../components/chat/ChatBubble";
 import ChatInput from "../../components/chat/ChatInput";
 import DashboardCard from "../../components/common/DashboardCard";
 import PageHeader from "../../components/layout/PageHeader";
 import { useAuth } from "../../context/AuthContext";
-import { sendChatMessage } from "../../services/chatService";
+import RecentChats from "../../components/chat/RecentChats";
+import { fetchChatSession, fetchChatSessions, sendChatMessage } from "../../services/chatService";
 import { getCourseCode, getCourseLabel, getCourses } from "../../utils/user";
 
 export default function AIAdvisorPage() {
@@ -34,12 +35,63 @@ export default function AIAdvisorPage() {
     ].slice(0, 9);
   }, [courses, user]);
 
+  const GREETING = { role: "assistant", text: "Ask me about your courses, uploaded PDFs, study planning, weak areas, or learning resources." };
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [messages, setMessages] = useState([
-    { role: "assistant", text: "Ask me about your courses, uploaded PDFs, study planning, weak areas, or learning resources." }
-  ]);
+  const [messages, setMessages] = useState([GREETING]);
+  const [sessions, setSessions] = useState([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [activeSessionId, setActiveSessionId] = useState(null);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchChatSessions()
+      .then((response) => {
+        if (active) setSessions(response?.data || []);
+      })
+      .finally(() => {
+        if (active) setSessionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Keep the newest message in view as the conversation grows.
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [messages, loading]);
+
+  const refreshSessions = () => {
+    fetchChatSessions().then((response) => setSessions(response?.data || []));
+  };
+
+  const startNewChat = () => {
+    setActiveSessionId(null);
+    setMessages([GREETING]);
+    setError("");
+    setInput("");
+  };
+
+  const openSession = async (session) => {
+    setError("");
+    setActiveSessionId(session.id);
+    // The list already carries the messages, so show them immediately and only
+    // refetch to pick up anything newer.
+    const seed = (session.messages || []).map((item) => ({ role: item.sender, text: item.message }));
+    setMessages(seed.length ? seed : [GREETING]);
+    try {
+      const response = await fetchChatSession(session.id);
+      const fresh = (response?.data?.messages || []).map((item) => ({ role: item.sender, text: item.message }));
+      if (fresh.length) setMessages(fresh);
+    } catch {
+      // The seeded copy is good enough; no need to interrupt the student.
+    }
+  };
 
   const ask = async (question) => {
     const text = question.trim();
@@ -49,9 +101,11 @@ export default function AIAdvisorPage() {
     setInput("");
     setLoading(true);
     try {
-      const response = await sendChatMessage(text);
+      const response = await sendChatMessage(text, { sessionId: activeSessionId });
       const data = response.data || {};
       setMessages((current) => [...current, { role: "assistant", text: data.response || "I could not generate a response right now." }]);
+      if (data.session_id) setActiveSessionId(data.session_id);
+      refreshSessions();
     } catch (chatError) {
       setError(chatError.message || "AI Advisor could not respond right now.");
     } finally {
@@ -68,11 +122,12 @@ export default function AIAdvisorPage() {
     <div>
       <PageHeader title="AI Advisor" subtitle="Ask StudyPilot for academic guidance based on your profile, PDFs, and study goals." />
 
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="rounded-[1.75rem] border border-pilot-line bg-white p-4 shadow-soft">
           {/* Sized to the viewport on small screens; a flat 660px overflowed
               short phones and pushed the composer below the fold. */}
-          <div className="scrollbar-soft flex h-[55vh] min-h-[320px] flex-col gap-4 overflow-y-auto rounded-[1.35rem] bg-pilot-ice p-3 sm:p-4 lg:h-[660px]">
+          <div ref={scrollRef} className="scrollbar-soft flex h-[55vh] min-h-[320px] flex-col gap-4 overflow-y-auto rounded-[1.35rem] bg-pilot-ice p-3 sm:p-4 lg:h-[660px]">
             {messages.map((message, index) => <ChatBubble key={`${message.role}-${index}`} role={message.role}>{message.text}</ChatBubble>)}
             {loading && <div className="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-pilot-blue shadow-soft">StudyPilot is writing a response...</div>}
           </div>
@@ -82,7 +137,16 @@ export default function AIAdvisorPage() {
           </div>
         </section>
 
-        <DashboardCard title="Suggested Questions For You" className="xl:sticky xl:top-6 xl:self-start">
+        <div className="space-y-6 xl:sticky xl:top-6 xl:self-start">
+          <RecentChats
+            sessions={sessions}
+            activeId={activeSessionId}
+            onSelect={openSession}
+            onNew={startNewChat}
+            loading={sessionsLoading}
+          />
+
+          <DashboardCard title="Suggested Questions For You">
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
             {prompts.map((question) => (
               <button
@@ -93,8 +157,9 @@ export default function AIAdvisorPage() {
                 {question}
               </button>
             ))}
-          </div>
-        </DashboardCard>
+            </div>
+          </DashboardCard>
+        </div>
       </div>
     </div>
   );
