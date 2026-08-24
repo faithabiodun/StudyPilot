@@ -497,3 +497,98 @@ class RecallDistanceTests(SimpleTestCase):
         """Measured live: on-topic 0.35-0.64, unrelated 0.84+."""
         self.assertGreater(services.MAX_RECALL_DISTANCE, 0.64)
         self.assertLess(services.MAX_RECALL_DISTANCE, 0.84)
+
+
+# --- Resume: unfinished work survives a closed tab or a logout ---
+
+from .records import build_progress, checkpoint_at, label_of, payload_of, status_of  # noqa: E402
+
+
+class ProgressRecordTests(SimpleTestCase):
+    def test_progress_round_trips_with_payload(self):
+        text = build_progress("sp-u1-progress", "pdf-quiz-28", "Pharmacology mixed quiz",
+                              {"answers": {"210": "Atenolol"}, "index": 3}, on=ON)
+        record = parse(text)
+        self.assertEqual(record.kind, "PROGRESS")
+        self.assertEqual(record.topic, "pdf-quiz-28")
+        self.assertEqual(status_of(text), "active")
+        self.assertEqual(label_of(text), "Pharmacology mixed quiz")
+        self.assertEqual(payload_of(text)["index"], 3)
+
+    def test_done_status_is_recorded(self):
+        self.assertEqual(status_of(build_progress("ns", "k", "l", {}, status="done", on=ON)), "done")
+
+    def test_checkpoint_timestamp_orders_same_day_records(self):
+        """Several checkpoints land on one date, so the date cannot pick a winner."""
+        a = build_progress("ns", "k", "l", {"index": 1}, on=ON)
+        b = build_progress("ns", "k", "l", {"index": 2}, on=ON)
+        self.assertTrue(checkpoint_at(b) >= checkpoint_at(a))
+
+    def test_malformed_payload_gives_empty_dict(self):
+        self.assertEqual(payload_of("PROGRESS | ns | k | 2026-08-22 | status:active\nPayload: {oops"), {})
+
+
+class ResumePointsTests(SimpleTestCase):
+    def setUp(self):
+        self.user = _StubUser(1)
+        self.ns = "sp-u1-progress"
+
+    def _resume(self, texts):
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=_seeded_client(self.ns, texts)):
+            return services.resume_points(self.user)
+
+    def test_unfinished_activity_is_offered(self):
+        texts = [build_progress(self.ns, "pdf-quiz-28", "Pharmacology quiz", {"index": 4, "total": 10}, on=ON)]
+        items = self._resume(texts)["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["key"], "pdf-quiz-28")
+        self.assertEqual(items[0]["payload"]["index"], 4)
+
+    def test_finished_activity_is_not_offered(self):
+        """Append-only: completion is a newer 'done' record, not a deletion."""
+        texts = [
+            build_progress(self.ns, "pdf-quiz-28", "Pharmacology quiz", {"index": 4}, on=ON),
+            build_progress(self.ns, "pdf-quiz-28", "Pharmacology quiz", {"index": 10}, status="done", on=ON),
+        ]
+        self.assertEqual(self._resume(texts)["items"], [])
+
+    def test_newest_checkpoint_wins_for_one_activity(self):
+        texts = [
+            build_progress(self.ns, "pdf-quiz-28", "Quiz", {"index": 2}, on=ON),
+            build_progress(self.ns, "pdf-quiz-28", "Quiz", {"index": 7}, on=ON),
+        ]
+        items = self._resume(texts)["items"]
+        self.assertEqual(len(items), 1, "one activity must yield one resume point")
+        self.assertEqual(items[0]["payload"]["index"], 7)
+
+    def test_separate_activities_are_listed_separately(self):
+        texts = [
+            build_progress(self.ns, "pdf-quiz-28", "Quiz", {"index": 2}, on=ON),
+            build_progress(self.ns, "yt-flashcards-9", "Deck", {"index": 5}, on=ON),
+        ]
+        self.assertEqual(len(self._resume(texts)["items"]), 2)
+
+    def test_resume_is_not_distance_filtered(self):
+        """"What was I doing" is not a relevance question; every checkpoint counts."""
+        client, calls = None, []
+
+        class SpyClient:
+            def recall(self, query, **kwargs):
+                calls.append(kwargs)
+                class R:
+                    results = []
+                return R()
+
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=SpyClient()):
+            services.resume_points(self.user)
+        self.assertTrue(calls)
+        self.assertNotIn("max_distance", calls[0])
+
+    def test_failure_degrades_to_no_resume_points(self):
+        boom = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("relayer down"))
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", side_effect=boom):
+            self.assertEqual(services.resume_points(self.user)["items"], [])
+            self.assertEqual(services.save_progress(self.user, "k", "l", {})["written"], 0)

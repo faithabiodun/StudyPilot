@@ -19,12 +19,17 @@ from .records import (
     build_hit,
     build_material,
     build_miss,
+    build_progress,
     build_session,
+    checkpoint_at,
+    label_of,
     minutes_of,
     misconception_of,
     parse,
+    payload_of,
     slugify_topic,
     source_of,
+    status_of,
 )
 
 logger = logging.getLogger(__name__)
@@ -183,6 +188,89 @@ def study_namespace_for(user):
     would bury the misses under material the student never got wrong.
     """
     return f"sp-u{user.id}-studied"
+
+
+def progress_namespace_for(user):
+    """Unfinished work, kept apart from mistakes and materials.
+
+    Checkpoints are noisy by nature (one per answer), so they must not sit
+    where the briefing counts misses or the advisor looks for study material.
+    """
+    return f"sp-u{user.id}-progress"
+
+
+def save_progress(user, activity_key, label, payload, status="active"):
+    """Checkpoint an unfinished quiz, deck, or generation. Never raises.
+
+    Append-only, so finishing writes a `status:done` record rather than
+    removing the active one; `resume_points` takes the newest per activity.
+    """
+    if not memwal_enabled():
+        return {"enabled": False, "written": 0, "error": ""}
+    try:
+        from memwal import RememberBulkItem
+
+        namespace = progress_namespace_for(user)
+        text = build_progress(
+            namespace=namespace,
+            activity_key=activity_key,
+            label=label,
+            payload=payload,
+            status=status,
+        )
+        _client(namespace).remember_bulk_async([RememberBulkItem(text=text, namespace=namespace)])
+        return {"enabled": True, "written": 1, "error": ""}
+    except Exception as exc:
+        logger.warning("Walrus progress write failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
+        return {"enabled": True, "written": 0, "error": str(exc)}
+
+
+def resume_points(user, limit=RECALL_LIMIT):
+    """Work this student left unfinished, newest checkpoint per activity.
+
+    Deliberately unfiltered by distance: this answers "what was I doing", not
+    "what is relevant to this question", so every checkpoint must be seen.
+    """
+    empty = {"enabled": False, "items": [], "error": ""}
+    if not memwal_enabled():
+        return empty
+    try:
+        namespace = progress_namespace_for(user)
+        texts, _ = _recall_texts(_client(namespace), namespace, "unfinished quiz flashcards in progress", limit=limit)
+
+        newest = {}
+        for text in texts:
+            record = parse(text)
+            if not record or record.kind != "PROGRESS" or not record.topic:
+                continue
+            stamp = checkpoint_at(text)
+            current = newest.get(record.topic)
+            # On an exact tie, "done" wins. Offering to resume something already
+            # finished is worse than missing a resume point.
+            newer = not current or stamp > current["at"] or (
+                stamp == current["at"] and status_of(text) == "done"
+            )
+            if newer:
+                newest[record.topic] = {"at": stamp, "text": text, "on": record.on}
+
+        items = []
+        for key, entry in newest.items():
+            # A finished activity leaves its "done" record as the newest one,
+            # which is how completion is expressed without a delete.
+            if status_of(entry["text"]) != "active":
+                continue
+            items.append({
+                "key": key,
+                "label": label_of(entry["text"]),
+                "saved_at": entry["at"],
+                "date": entry["on"].isoformat(),
+                "payload": payload_of(entry["text"]),
+            })
+        items.sort(key=lambda item: item["saved_at"], reverse=True)
+        return {"enabled": True, "items": items, "error": ""}
+    except Exception as exc:
+        logger.warning("Walrus resume lookup failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
+        return {"enabled": True, "items": [], "error": str(exc)}
 
 
 def remember_material(user, source_type, title, topic="", summary="", reference=""):

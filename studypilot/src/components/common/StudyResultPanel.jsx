@@ -183,10 +183,13 @@ function ScoreRing({ percentage }) {
   );
 }
 
-function QuizRunner({ questions, onClose }) {
-  const [answers, setAnswers] = useState({});
+function QuizRunner({ questions, onClose, initialAnswers = {}, onProgress }) {
+  const [answers, setAnswers] = useState(initialAnswers);
   const [revealed, setRevealed] = useState({});
   const [shakeKey, setShakeKey] = useState("");
+  // One question at a time, like the flashcard deck. A long scroll of every
+  // question made it easy to skip past ones you had not answered.
+  const [index, setIndex] = useState(0);
 
   const keyOf = (question, index) => question.id || `${question.question}-${index}`;
 
@@ -219,18 +222,36 @@ function QuizRunner({ questions, onClose }) {
   const complete = objectiveTotal > 0 && answeredCount === objectiveTotal;
   const percentage = objectiveTotal ? Math.round((correctCount / objectiveTotal) * 100) : 0;
 
+  const total = entries.length;
+  const go = (next) => setIndex(Math.min(total - 1, Math.max(0, next)));
+
   const selectAnswer = (entry, optionText, isCorrect) => {
     if (answers[entry.key]) return;
     if (!isCorrect) {
       setShakeKey(`${entry.key}-${optionText}`);
       window.setTimeout(() => setShakeKey(""), 350);
     }
-    setAnswers((current) => ({ ...current, [entry.key]: optionText }));
+    const next = { ...answers, [entry.key]: optionText };
+    setAnswers(next);
+    // Hand the answers up so they can be checkpointed; losing a part-finished
+    // quiz to a closed tab is the thing this avoids.
+    if (onProgress) onProgress(next, entry.index);
   };
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === "ArrowRight") go(index + 1);
+      if (event.key === "ArrowLeft") go(index - 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [index, total]);
 
   const reset = () => {
     setAnswers({});
     setRevealed({});
+    setIndex(0);
+    if (onProgress) onProgress({}, 0);
   };
 
   const band =
@@ -260,12 +281,15 @@ function QuizRunner({ questions, onClose }) {
         </div>
       )}
 
-      {entries.map((entry) => {
+      {entries.slice(index, index + 1).map((entry) => {
         const { question, key, options, objective } = entry;
         const selected = answers[key];
         const isRevealed = revealed[key];
         return (
-          <div key={key} className="rounded-2xl border border-pilot-line bg-white p-5 shadow-soft">
+          <div key={key} className="pilot-pop rounded-2xl border border-pilot-line bg-white p-5 shadow-soft">
+            <p className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-pilot-muted">
+              Question {index + 1} / {total}
+            </p>
             <span className="inline-flex rounded-full bg-pilot-soft px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-pilot-blue">
               {String(question.question_type || "question").replace(/_/g, " ")}
             </span>
@@ -335,6 +359,40 @@ function QuizRunner({ questions, onClose }) {
           </div>
         );
       })}
+
+      {/* Question dots: answered state at a glance, and a way to jump back */}
+      <div className="flex flex-wrap justify-center gap-1.5">
+        {entries.map((entry, dotIndex) => {
+          const picked = answers[entry.key];
+          const right = picked && picked === entry.question.correct_answer;
+          return (
+            <button
+              key={entry.key}
+              aria-label={`Go to question ${dotIndex + 1}`}
+              onClick={() => go(dotIndex)}
+              className={`h-2 rounded-full transition-all ${
+                dotIndex === index
+                  ? "w-6 bg-pilot-blue"
+                  : picked
+                    ? right ? "w-2 bg-pilot-green" : "w-2 bg-red-400"
+                    : "w-2 bg-pilot-line"
+              }`}
+            />
+          );
+        })}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <Button variant="secondary" icon={ChevronLeft} disabled={index === 0} onClick={() => go(index - 1)}>
+          Prev
+        </Button>
+        <span className="text-xs font-black text-pilot-muted">
+          {answeredCount} / {objectiveTotal || total} answered
+        </span>
+        <Button variant="secondary" onClick={() => go(index + 1)} disabled={index >= total - 1}>
+          Next <ChevronRight size={17} />
+        </Button>
+      </div>
 
       {/* Score summary */}
       {objectiveTotal > 0 && (

@@ -13,12 +13,13 @@ of silently dropping them.
 Pure functions only. No I/O, no Django, no network, so this is unit-testable
 without credentials or a relayer.
 """
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-VALID_KINDS = ("MISS", "HIT", "MASTERED", "PATTERN", "SESSION", "MATERIAL")
+VALID_KINDS = ("MISS", "HIT", "MASTERED", "PATTERN", "SESSION", "MATERIAL", "PROGRESS")
 SEVERITY_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
 DEFAULT_SEVERITY = "medium"
 MASTERY_DAYS = 30
@@ -28,7 +29,7 @@ MASTERY_DAYS = 30
 # slot, which would otherwise make every SESSION record parse with topic set to
 # a date and no date at all.
 _HEADER = re.compile(
-    r"^(?P<kind>MISS|HIT|MASTERED|PATTERN|SESSION|MATERIAL)\s*\|\s*"
+    r"^(?P<kind>MISS|HIT|MASTERED|PATTERN|SESSION|MATERIAL|PROGRESS)\s*\|\s*"
     r"(?P<namespace>[^|]+?)\s*\|\s*"
     r"(?:(?P<topic>(?!\d{4}-\d{2}-\d{2}\s*(?:\||$))[^|]+?)\s*\|\s*)?"
     r"(?P<date>\d{4}-\d{2}-\d{2})"
@@ -40,6 +41,8 @@ _EXPIRES = re.compile(r"expires:\s*(\d{4}-\d{2}-\d{2})")
 _MISCONCEPTION = re.compile(r"My misconception:\s*(.+?)(?:\n|$)", re.IGNORECASE | re.DOTALL)
 _SOURCE = re.compile(r"source:\s*([a-z0-9_]+)", re.IGNORECASE)
 _MINUTES = re.compile(r"minutes:\s*(\d+)", re.IGNORECASE)
+_STATUS = re.compile(r"status:\s*(active|done)", re.IGNORECASE)
+_AT = re.compile(r"at:\s*(\S+)")
 
 
 @dataclass(frozen=True)
@@ -197,3 +200,53 @@ def parse(text):
         expires=expires,
         text=str(text),
     )
+
+
+def build_progress(namespace, activity_key, label, payload, status="active", at=None, on=None):
+    """Unfinished work, so it can be picked up on another day or device.
+
+    The store has no update, so finishing appends a `status:done` record rather
+    than editing the active one. `at:` carries a full timestamp because several
+    checkpoints of the same activity land on one date, and the date alone
+    cannot tell you which is current.
+    """
+    when = at or datetime.now(timezone.utc)
+    # Microseconds, not seconds: answering quickly, or writing the "done"
+    # record straight after the last answer, produces two checkpoints inside
+    # the same second, and equal stamps cannot be ordered.
+    stamp = when.isoformat(timespec="microseconds")
+    return (
+        f"PROGRESS | {namespace} | {slugify_topic(activity_key)} | {_on(on)} | status:{status} at:{stamp}\n"
+        f"Label: {label}\n"
+        f"Payload: {json.dumps(payload, separators=(',', ':'))}"
+    )
+
+
+def status_of(text):
+    match = _STATUS.search(str(text or ""))
+    return match.group(1).lower() if match else ""
+
+
+def checkpoint_at(text):
+    """Sort key for choosing the newest checkpoint of one activity."""
+    match = _AT.search(str(text or ""))
+    if not match:
+        return ""
+    return match.group(1)
+
+
+def payload_of(text):
+    for line in str(text or "").splitlines():
+        if line.startswith("Payload: "):
+            try:
+                return json.loads(line[len("Payload: "):])
+            except json.JSONDecodeError:
+                return {}
+    return {}
+
+
+def label_of(text):
+    for line in str(text or "").splitlines():
+        if line.startswith("Label: "):
+            return line[len("Label: "):].strip()
+    return ""

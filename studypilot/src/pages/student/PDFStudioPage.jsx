@@ -5,12 +5,14 @@ import Button from "../../components/common/Button";
 import DashboardCard from "../../components/common/DashboardCard";
 import Select from "../../components/common/Select";
 import StagedProgress from "../../components/common/StagedProgress";
+import ResumeBanner from "../../components/common/ResumeBanner";
 import StudyResultPanel from "../../components/common/StudyResultPanel";
 import PageHeader from "../../components/layout/PageHeader";
 import UploadBox from "../../components/upload/UploadBox";
 import { generateFlashcards } from "../../services/flashcardService";
 import { fetchDeploymentHealth, MAX_PDF_UPLOAD_MB, uploadMaterial } from "../../services/materialService";
 import { generateMCQs, generateQuiz } from "../../services/quizService";
+import { fetchResumePoints, saveProgress } from "../../services/memoryService";
 
 const toolConfig = {
   flashcards: {
@@ -147,7 +149,7 @@ function SetupPanel({ selectedTool, setup, setSetup, loadingAction, onGenerate, 
   );
 }
 
-function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error, onClose, onGenerate }) {
+function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error, onClose, onGenerate, initialAnswers, onProgress }) {
   const config = selectedTool ? toolConfig[selectedTool] : null;
 
   useEffect(() => {
@@ -201,7 +203,7 @@ function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error
             <StagedProgress steps={generationSteps} note="Generation usually takes 10 to 30 seconds." />
           )}
           {!result && <SetupPanel selectedTool={selectedTool} setup={setup} setSetup={setSetup} loadingAction={loadingAction} onGenerate={onGenerate} result={result} />}
-          {result && <div className="mt-2"><StudyResultPanel result={result} onClose={onClose} /></div>}
+          {result && <div className="mt-2"><StudyResultPanel result={result} onClose={onClose} initialAnswers={initialAnswers} onProgress={onProgress} /></div>}
         </div>
       </section>
     </div>
@@ -223,6 +225,19 @@ export default function PDFStudioPage() {
   const [loadingAction, setLoadingAction] = useState("");
   const [result, setResult] = useState(null);
   const [uploadLimitMb, setUploadLimitMb] = useState(MAX_PDF_UPLOAD_MB);
+  const [resumeItems, setResumeItems] = useState([]);
+  const [progressKey, setProgressKey] = useState("");
+  const [resumedAnswers, setResumedAnswers] = useState({});
+
+  useEffect(() => {
+    let active = true;
+    // Recalled from Walrus, not this browser, so it survives a logout or a
+    // different device.
+    fetchResumePoints().then((response) => {
+      if (active) setResumeItems((response?.data?.items || []).filter((item) => item.key.startsWith("pdf-")));
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -307,7 +322,11 @@ export default function PDFStudioPage() {
         : selectedTool === "mcq"
           ? await generateMCQs({ ...basePayload, number_of_questions: count, show_explanations: true })
           : await generateQuiz({ ...basePayload, number_of_questions: count, question_types: setup.questionTypes });
-      setResult({ ...(response.data || {}), title: selectedTool === "flashcards" ? "Generated Flashcards" : selectedTool === "mcq" ? "Generated MCQs" : "Generated Mixed Quiz" });
+      const data = response.data || {};
+      const title = selectedTool === "flashcards" ? "Generated Flashcards" : selectedTool === "mcq" ? "Generated MCQs" : "Generated Mixed Quiz";
+      setResult({ ...data, title });
+      setResumedAnswers({});
+      setProgressKey(`pdf-${selectedTool}-${data.id || activeDocument.id}`);
       setStatus(toolConfig[selectedTool].success);
     } catch (generationError) {
       setError(generationError.message || "Not enough clean text was found to generate questions.");
@@ -317,9 +336,31 @@ export default function PDFStudioPage() {
     }
   };
 
+  // Checkpointed as the student answers, so a closed tab is not lost work.
+  const checkpoint = (answers, index) => {
+    if (!progressKey || !result) return;
+    const total = (result.questions || result.cards || []).length;
+    const done = Object.keys(answers).length >= total && total > 0;
+    saveProgress({
+      key: progressKey,
+      label: `${result.title} from ${activeDocument?.title || "your PDF"}`,
+      payload: { answers, index, total, tool: selectedTool, document_id: activeDocument?.id },
+      done
+    });
+  };
+
+  const resumeItem = (item) => {
+    setResumeItems([]);
+    setResumedAnswers(item.payload?.answers || {});
+    setProgressKey(item.key);
+    setStatus(`Resumed ${item.label}. Regenerate to continue where you stopped.`);
+  };
+
   return (
     <div>
       <PageHeader title="PDF Study Converter" subtitle="Upload one readable PDF, extract its text, delete the file, then generate study tools from the saved content." />
+      <ResumeBanner items={resumeItems} onResume={resumeItem} onDismiss={() => setResumeItems([])} />
+
       <DashboardCard>
         <UploadBox fileName={latestFile || activeDocument?.original_filename} onFile={addFile} uploadLimitMb={uploadLimitMb} />
         {loadingAction === "upload" ? (
@@ -393,6 +434,8 @@ export default function PDFStudioPage() {
         error={selectedTool ? error : ""}
         onClose={closeToolModal}
         onGenerate={runGeneration}
+        initialAnswers={resumedAnswers}
+        onProgress={checkpoint}
       />
     </div>
   );
