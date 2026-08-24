@@ -4,6 +4,7 @@ import { CheckCircle, Loader2, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import { checkBackendHealth, exchangeSupabaseGoogleToken } from "../../services/authService";
+import { postAuthPath } from "../../utils/user";
 
 export default function AuthCallbackPage() {
   const navigate = useNavigate();
@@ -38,7 +39,7 @@ export default function AuthCallbackPage() {
         completeAuth(user);
 
         if (mounted) setStatus("Redirecting to your dashboard...");
-        navigate(user.profile_completed ? "/dashboard" : "/onboarding", { replace: true });
+        navigate(postAuthPath(user), { replace: true });
       } catch (callbackError) {
         if (!mounted) return;
         setError(callbackError.message || "Google login could not be completed.");

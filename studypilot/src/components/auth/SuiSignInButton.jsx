@@ -5,6 +5,7 @@ import Button from "../common/Button";
 import SuiLogo from "../common/SuiLogo";
 import { useAuth } from "../../context/AuthContext";
 import { loginWithSui, requestSuiChallenge } from "../../services/authService";
+import { postAuthPath } from "../../utils/user";
 
 /**
  * Sign in by proving ownership of a Sui wallet.
@@ -44,7 +45,7 @@ export default function SuiSignInButton({ label = "Continue with Sui", onError }
         nonce: challenge.nonce
       });
       completeAuth(user);
-      navigate(user.profile_completed ? "/dashboard" : "/onboarding", { replace: true });
+      navigate(postAuthPath(user), { replace: true });
     } catch (error) {
       // A user dismissing the wallet popup is a cancellation, not a failure.
       const message = String(error?.message || "");
@@ -61,7 +62,7 @@ export default function SuiSignInButton({ label = "Continue with Sui", onError }
   return (
     <>
       <Button type="button" variant="secondary" className="mb-5 w-full" onClick={signIn} disabled={busy}>
-        <SuiLogo size={18} className="text-[#4DA2FF]" />
+        <SuiLogo size={18} />
         {busy ? "Waiting for your wallet..." : account?.address ? label : "Connect Sui Wallet"}
       </Button>
       <ConnectModal

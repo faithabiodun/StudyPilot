@@ -15,6 +15,18 @@ export function getFirstName(user) {
   return "Student";
 }
 
+/**
+ * Where a freshly authenticated user belongs.
+ *
+ * Wallet and Google sign-ups have no username yet, so they claim one before
+ * onboarding. ProtectedRoute enforces the same order, but routing straight
+ * there avoids a visible redirect bounce.
+ */
+export function postAuthPath(user) {
+  if (!user?.username) return "/choose-username";
+  return user.profile_completed ? "/dashboard" : "/onboarding";
+}
+
 export function getFullName(user) {
   return user?.full_name || user?.fullName || user?.name || getFirstName(user);
 }
