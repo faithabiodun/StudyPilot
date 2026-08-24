@@ -93,14 +93,6 @@ Correct: Atenolol
 Mixing these would break the product, not just the tidiness: a namespace full of
 PDFs you never got wrong would push your actual mistakes out of the top five.
 
-### Relevance filtering
 
-`recall` returns its top *k* regardless of relevance, so an unrelated question
-still comes back with *k* records. Measured against a live namespace, on-topic
-hits sit at 0.35 to 0.64 cosine distance and unrelated ones at 0.84 and above,
-so the advisor passes `max_distance=0.70`. The briefing and study history
-deliberately do **not** filter, because they are counting rather than matching,
-and filtering a count would undercount misses. See
-[MystenLabs/MemWal#741](https://github.com/MystenLabs/MemWal/issues/741).
 
 
