@@ -103,17 +103,4 @@ deliberately do **not** filter, because they are counting rather than matching,
 and filtering a count would undercount misses. See
 [MystenLabs/MemWal#741](https://github.com/MystenLabs/MemWal/issues/741).
 
-### Memory is optional
 
-Every call site swallows and logs its own failures. If the relayer is slow,
-down, or unconfigured, quizzes still grade, uploads still work, and the advisor
-still answers. Set `MEMWAL_ENABLED=false` and the app behaves exactly as it did
-before any of this existed.
-
-### Ownership, stated plainly
-
-This is a **server-owned** MemWal account, with students separated by namespace
-string. That is isolation, not access control: a student cannot take their
-record elsewhere, revoke StudyPilot's access, or read it from their own client.
-Per-student delegate keys are the real answer and are the next milestone. This
-is not student-owned memory yet, and is not described as such.
