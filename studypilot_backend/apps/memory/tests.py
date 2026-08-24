@@ -322,3 +322,75 @@ class MisconceptionContextTests(SimpleTestCase):
         with patch.object(services, "memwal_enabled", return_value=True), \
              patch.object(services, "_client", side_effect=boom):
             self.assertEqual(services.misconception_context(self.user, "q", ["Pharmacology"]), "")
+
+
+# --- Study material memory: a separate plane from mistakes ---
+
+from .records import build_material, source_of  # noqa: E402
+
+
+class MaterialRecordTests(SimpleTestCase):
+    def test_material_round_trips(self):
+        text = build_material(
+            "sp-u1-studied", "Beta Blockers", "youtube",
+            "Cardio Pharm Lecture 3", "beta blocker selectivity and asthma risk",
+            reference="https://www.youtube.com/watch?v=abc123", on=ON,
+        )
+        record = parse(text)
+        self.assertEqual(record.kind, "MATERIAL")
+        self.assertEqual(record.topic, "beta-blockers")
+        self.assertEqual(source_of(text), "youtube")
+        self.assertIn("Cardio Pharm Lecture 3", record.text)
+        self.assertIn("youtube.com/watch?v=abc123", record.text)
+
+    def test_source_missing_gives_empty_string(self):
+        self.assertEqual(source_of("MISS | ns | topic | 2026-08-22 | sev:high"), "")
+
+
+class MaterialNamespaceTests(SimpleTestCase):
+    def test_study_namespace_is_separate_from_course_namespaces(self):
+        """Materials must not land where the weakness briefing ranks."""
+        user = _StubUser(1)
+        self.assertEqual(services.study_namespace_for(user), "sp-u1-studied")
+        self.assertNotEqual(services.study_namespace_for(user), services.namespace_for(user, "Pharmacology"))
+
+    def test_study_namespace_is_per_user(self):
+        self.assertNotEqual(services.study_namespace_for(_StubUser(1)), services.study_namespace_for(_StubUser(2)))
+
+
+class MaterialContextTests(SimpleTestCase):
+    def setUp(self):
+        self.user = _StubUser(1)
+        self.ns = "sp-u1-studied"
+
+    def test_context_lists_videos_the_student_converted(self):
+        texts = [
+            build_material(self.ns, "beta-blockers", "youtube", "Cardio Pharm Lecture 3",
+                           "beta blocker selectivity", on=date(2026, 8, 20)),
+            build_material(self.ns, "diuretics", "pdf", "Renal Notes.pdf",
+                           "loop diuretics", on=date(2026, 8, 21)),
+        ]
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=_seeded_client(self.ns, texts)):
+            out = services.material_context(self.user, "explain beta blockers")
+        self.assertIn("Cardio Pharm Lecture 3", out)
+        self.assertIn("youtube", out)
+        self.assertIn("2026-08-20", out)
+
+    def test_briefing_ignores_material_records(self):
+        """A MATERIAL record must never be counted as a weakness."""
+        texts = [build_material(self.ns, "beta-blockers", "youtube", "Lecture 3", "", on=date(2026, 8, 20))]
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", return_value=_seeded_client(self.ns, texts)):
+            brief = services.weakness_briefing(self.user, "Pharmacology", on=date(2026, 8, 22))
+        self.assertEqual(brief["weak_topics"], [])
+        self.assertEqual(brief["unparsed_records"], 0)
+
+    def test_disabled_and_failure_both_degrade_to_empty(self):
+        with patch.object(services, "memwal_enabled", return_value=False):
+            self.assertEqual(services.material_context(self.user, "q"), "")
+        boom = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("relayer down"))
+        with patch.object(services, "memwal_enabled", return_value=True), \
+             patch.object(services, "_client", side_effect=boom):
+            self.assertEqual(services.material_context(self.user, "q"), "")
+            self.assertEqual(services.remember_material(self.user, "pdf", "T")["written"], 0)

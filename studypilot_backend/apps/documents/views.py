@@ -10,6 +10,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
 from apps.dashboard.services import record_activity
+from apps.memory.services import remember_material
 from apps.utils import error_response, success_response
 
 from .models import Document
@@ -176,6 +177,13 @@ class DocumentUploadView(APIView):
             "Uploaded PDF",
             f"You uploaded {document.original_filename}.",
             {"document_id": document.id, "filename": document.original_filename},
+        )
+        # Remember what was studied so the advisor can refer back to it later.
+        remember_material(
+            request.user,
+            source_type="pdf",
+            title=document.title or document.original_filename,
+            summary=clean_safe_string(document.extracted_text or "", max_length=220),
         )
         return success_response("PDF processed successfully", document_upload_payload(document, elapsed), status.HTTP_201_CREATED)
 

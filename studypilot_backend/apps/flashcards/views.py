@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from apps.documents.services import clean_extracted_text, clean_safe_string
 from apps.documents.models import Document
 from apps.dashboard.services import record_activity
+from apps.memory.services import remember_material
 from apps.ai.services import AIServiceError, generate_pdf_flashcards_with_deepseek, select_pdf_study_context
 from apps.study_tools.deduplication import deduplicate_flashcards
 from apps.utils import error_response, success_response
@@ -110,6 +111,12 @@ class GenerateFlashcardsView(APIView):
             "Generated Flashcards",
             f"You generated {deck.cards.count()} flashcards from {document.title}.",
             {"document_id": document.id, "deck_id": deck.id, "count": deck.cards.count()},
+        )
+        remember_material(
+            request.user,
+            source_type="flashcards",
+            title=f"{deck.course_title or document.title} flashcard deck",
+            summary=f"{deck.cards.count()} cards from {document.title}",
         )
         message = "Flashcards generated successfully"
         if deck.cards.count() < requested_count:

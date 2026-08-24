@@ -4,12 +4,16 @@ import Button from "../../components/common/Button";
 import FloatingFileCard from "../../components/common/FloatingFileCard";
 import LogoMark from "../../components/common/LogoMark";
 import SectionHeader from "../../components/common/SectionHeader";
+import useInView from "../../hooks/useInView";
 import { useAuth } from "../../context/AuthContext";
 import { actionCards, features, heroChips, howItWorks, overviewCards, recentActivity } from "../../data/mockData";
 
-function DashboardPreview() {
+function DashboardPreview({ innerRef, visible }) {
   return (
-    <div className="mx-auto mt-16 max-w-6xl overflow-hidden rounded-[2rem] border border-pilot-line bg-white shadow-pilot">
+    <div
+      ref={innerRef}
+      className={`pilot-reveal mx-auto mt-16 max-w-6xl overflow-hidden rounded-[2rem] border border-pilot-line bg-white shadow-pilot ${visible ? "is-visible" : ""}`}
+    >
       <div className="grid min-h-[420px] lg:grid-cols-[190px_1fr]">
         <aside className="hidden bg-pilot-blue p-5 text-white lg:block">
           <div className="flex items-center gap-2 text-sm font-black">
@@ -76,6 +80,9 @@ function DashboardPreview() {
 
 export default function LandingPage() {
   const { isAuthenticated } = useAuth();
+  const [featuresRef, featuresInView] = useInView();
+  const [stepsRef, stepsInView] = useInView();
+  const [previewRef, previewInView] = useInView({ threshold: 0.12 });
 
   return (
     <div className="min-h-screen bg-white text-pilot-ink">
@@ -125,15 +132,18 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
-          <DashboardPreview />
+          <DashboardPreview innerRef={previewRef} visible={previewInView} />
         </section>
 
         <section id="features" className="px-5 py-24">
           <div className="mx-auto max-w-6xl">
             <SectionHeader eyebrow="Features Section" title="Everything Students Need In One Academic Workspace" />
-            <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {features.map((feature) => {
-                const cardClasses = "rounded-[1.5rem] border border-pilot-line bg-white p-7 text-center shadow-soft transition";
+            <div ref={featuresRef} className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {features.map((feature, index) => {
+                const cardClasses = `pilot-reveal rounded-[1.5rem] border border-pilot-line bg-white p-7 text-center shadow-soft transition ${featuresInView ? "is-visible" : ""}`;
+                // Each card follows the one before it, so the row reads left to
+                // right as you scroll rather than appearing all at once.
+                const stagger = { animationDelay: `${index * 90}ms` };
                 const body = (
                   <>
                     <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-pilot-soft text-pilot-blue">
@@ -146,11 +156,11 @@ export default function LandingPage() {
                 // Signed out these are descriptions, not entry points. Linking
                 // them only bounced visitors off to the login screen.
                 return isAuthenticated ? (
-                  <Link to={feature.path} key={feature.title} className={`${cardClasses} hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot`}>
+                  <Link to={feature.path} key={feature.title} style={stagger} className={`${cardClasses} hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot`}>
                     {body}
                   </Link>
                 ) : (
-                  <div key={feature.title} className={cardClasses}>{body}</div>
+                  <div key={feature.title} style={stagger} className={cardClasses}>{body}</div>
                 );
               })}
             </div>
@@ -160,10 +170,14 @@ export default function LandingPage() {
         <section id="resources" className="bg-pilot-ice px-5 py-24">
           <div className="mx-auto max-w-6xl">
             <SectionHeader eyebrow="How It Works Section" title="How StudyPilot Works" text="Simple steps to smarter studying." />
-            <div className="relative mt-12 grid gap-5 md:grid-cols-3">
+            <div ref={stepsRef} className="relative mt-12 grid gap-5 md:grid-cols-3">
               <div className="absolute left-[18%] right-[18%] top-16 hidden border-t border-dashed border-pilot-blue/40 md:block" />
               {howItWorks.map((step, index) => (
-                <div key={step.title} className="relative rounded-[1.5rem] border border-pilot-line bg-white p-8 text-center shadow-soft transition hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot">
+                <div
+                  key={step.title}
+                  style={{ animationDelay: `${index * 120}ms` }}
+                  className={`pilot-reveal relative rounded-[1.5rem] border border-pilot-line bg-white p-8 text-center shadow-soft transition hover:-translate-y-1 hover:border-pilot-blue hover:shadow-pilot ${stepsInView ? "is-visible" : ""}`}
+                >
                   <div className="absolute -top-4 left-1/2 grid h-8 w-8 -translate-x-1/2 place-items-center rounded-full bg-pilot-blue text-sm font-black text-white">{index + 1}</div>
                   <div className="mx-auto mt-4 grid h-16 w-16 place-items-center rounded-2xl bg-pilot-soft text-pilot-blue">
                     <step.icon size={28} />

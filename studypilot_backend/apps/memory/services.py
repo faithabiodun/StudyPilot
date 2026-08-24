@@ -14,7 +14,16 @@ from datetime import date
 
 from django.conf import settings
 
-from .records import SEVERITY_WEIGHTS, build_hit, build_miss, misconception_of, parse, slugify_topic
+from .records import (
+    SEVERITY_WEIGHTS,
+    build_hit,
+    build_material,
+    build_miss,
+    misconception_of,
+    parse,
+    slugify_topic,
+    source_of,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +153,72 @@ def record_quiz_attempt(user, quiz, details, on=None):
         logger.warning("Walrus memory write failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
 
     return summary
+
+
+def study_namespace_for(user):
+    """One namespace per student for everything they have studied.
+
+    Deliberately separate from the per-course mistake namespaces: the weakness
+    briefing ranks over what it recalls, so mixing uploads and videos in there
+    would bury the misses under material the student never got wrong.
+    """
+    return f"sp-u{user.id}-studied"
+
+
+def remember_material(user, source_type, title, topic="", summary="", reference=""):
+    """Record that a student studied something. Never raises.
+
+    Called from PDF upload, the YouTube tools, and deck generation, so the
+    advisor can later say what the student has actually been working through.
+    """
+    if not memwal_enabled():
+        return {"enabled": False, "written": 0, "error": ""}
+    try:
+        from memwal import RememberBulkItem
+
+        namespace = study_namespace_for(user)
+        text = build_material(
+            namespace=namespace,
+            topic=topic or title,
+            source_type=source_type,
+            title=title,
+            summary=summary,
+            reference=reference,
+        )
+        _client(namespace).remember_bulk_async([RememberBulkItem(text=text, namespace=namespace)])
+        return {"enabled": True, "written": 1, "error": ""}
+    except Exception as exc:
+        logger.warning("Walrus material write failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
+        return {"enabled": True, "written": 0, "error": str(exc)}
+
+
+def material_context(user, query, limit=RECALL_LIMIT, max_lines=6):
+    """What this student has studied that relates to the question. Never raises."""
+    if not memwal_enabled():
+        return ""
+    try:
+        namespace = study_namespace_for(user)
+        texts, _ = _recall_texts(_client(namespace), namespace, query, limit=limit)
+        lines = []
+        for text in texts:
+            record = parse(text)
+            if not record or record.kind != "MATERIAL":
+                continue
+            title = ""
+            covers = ""
+            for line in str(record.text).splitlines():
+                if line.startswith("Studied: "):
+                    title = line[len("Studied: "):].strip()
+                elif line.startswith("Covers: "):
+                    covers = line[len("Covers: "):].strip()
+            if not title:
+                continue
+            label = source_of(record.text) or "material"
+            lines.append(f"- {label} on {record.on.isoformat()}: {title}" + (f" — {covers}" if covers else ""))
+        return "\n".join(lines[:max_lines])
+    except Exception as exc:
+        logger.warning("Walrus material recall failed for user=%s: %s", getattr(user, "id", None), exc, exc_info=True)
+        return ""
 
 
 def misconception_context(user, query, course_titles, per_namespace_limit=10, max_courses=4, max_lines=6):

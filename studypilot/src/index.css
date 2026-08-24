@@ -164,3 +164,35 @@ textarea {
 .pilot-shake {
   animation: pilotShake 0.32s ease-in-out;
 }
+
+/* Scroll-driven reveal: content rises into place as its section enters view.
+   Held hidden until .is-visible so nothing flashes before the observer fires. */
+@keyframes pilotRevealUp {
+  0% {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pilot-reveal {
+  opacity: 0;
+}
+
+.pilot-reveal.is-visible {
+  animation: pilotRevealUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Motion here is a response to scrolling, not decoration, so it is switched
+   off entirely rather than shortened when the user asks for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .pilot-reveal,
+  .pilot-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}

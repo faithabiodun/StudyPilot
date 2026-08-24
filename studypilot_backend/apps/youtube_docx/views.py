@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 
 from apps.ai.services import AIServiceError, generate_structured_docx_content_with_deepseek
 from apps.dashboard.services import record_activity
+from apps.memory.services import remember_material
 from apps.documents.services import clean_extracted_text, clean_safe_string
 from apps.study_tools.deduplication import deduplicate_flashcards, deduplicate_questions
 from apps.utils import error_response, success_response
@@ -31,6 +32,19 @@ def _resolve_transcript(youtube_url):
     """Return (transcript, metadata, source) or raise TranscriptError."""
     return get_transcript_and_metadata(youtube_url)
 
+
+
+def _remember_video(user, metadata, tool, extra=""):
+    """Record a watched lecture so the advisor can refer back to it."""
+    title = metadata.get("title") or "a YouTube video"
+    video_id = metadata.get("video_id") or ""
+    remember_material(
+        user,
+        source_type="youtube",
+        title=title,
+        summary=extra,
+        reference=f"https://www.youtube.com/watch?v={video_id}" if video_id else "",
+    )
 
 class YoutubeToDocxView(APIView):
     permission_classes = [IsAuthenticated]
@@ -87,6 +101,7 @@ class YoutubeToDocxView(APIView):
             f"You generated a study document from {metadata.get('title') or 'a YouTube video'}.",
             {"video_id": metadata.get("video_id"), "source": source},
         )
+        _remember_video(request.user, metadata, "docx", content.get("summary") or "")
         response = HttpResponse(buffer.getvalue(), content_type=DOCX_CONTENT_TYPE)
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         response["X-StudyPilot-Source"] = source
@@ -143,6 +158,7 @@ class YoutubeFlashcardsView(APIView):
             f"You generated {len(clean_cards)} flashcards from {metadata.get('title') or 'a YouTube video'}.",
             {"video_id": metadata.get("video_id"), "count": len(clean_cards)},
         )
+        _remember_video(request.user, metadata, "flashcards", f"{len(clean_cards)} flashcards generated")
         return success_response(
             "Flashcards generated successfully",
             {
@@ -205,6 +221,7 @@ class YoutubeMCQView(APIView):
             f"You generated {len(questions)} MCQs from {metadata.get('title') or 'a YouTube video'}.",
             {"video_id": metadata.get("video_id"), "count": len(questions)},
         )
+        _remember_video(request.user, metadata, "mcq", f"{len(questions)} MCQs generated")
         return success_response(
             "MCQ quiz generated successfully",
             {
@@ -265,6 +282,7 @@ class YoutubeQuizView(APIView):
             f"You generated {len(questions)} quiz questions from {metadata.get('title') or 'a YouTube video'}.",
             {"video_id": metadata.get("video_id"), "count": len(questions)},
         )
+        _remember_video(request.user, metadata, "quiz", f"{len(questions)} mixed questions generated")
         return success_response(
             "Mixed quiz generated successfully",
             {

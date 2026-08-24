@@ -18,7 +18,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-VALID_KINDS = ("MISS", "HIT", "MASTERED", "PATTERN", "SESSION")
+VALID_KINDS = ("MISS", "HIT", "MASTERED", "PATTERN", "SESSION", "MATERIAL")
 SEVERITY_WEIGHTS = {"high": 3, "medium": 2, "low": 1}
 DEFAULT_SEVERITY = "medium"
 MASTERY_DAYS = 30
@@ -28,7 +28,7 @@ MASTERY_DAYS = 30
 # slot, which would otherwise make every SESSION record parse with topic set to
 # a date and no date at all.
 _HEADER = re.compile(
-    r"^(?P<kind>MISS|HIT|MASTERED|PATTERN|SESSION)\s*\|\s*"
+    r"^(?P<kind>MISS|HIT|MASTERED|PATTERN|SESSION|MATERIAL)\s*\|\s*"
     r"(?P<namespace>[^|]+?)\s*\|\s*"
     r"(?:(?P<topic>(?!\d{4}-\d{2}-\d{2}\s*(?:\||$))[^|]+?)\s*\|\s*)?"
     r"(?P<date>\d{4}-\d{2}-\d{2})"
@@ -38,6 +38,7 @@ _HEADER = re.compile(
 _SEVERITY = re.compile(r"sev:\s*(high|medium|low)", re.IGNORECASE)
 _EXPIRES = re.compile(r"expires:\s*(\d{4}-\d{2}-\d{2})")
 _MISCONCEPTION = re.compile(r"My misconception:\s*(.+?)(?:\n|$)", re.IGNORECASE | re.DOTALL)
+_SOURCE = re.compile(r"source:\s*([a-z0-9_]+)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,29 @@ def build_mastered(namespace, topic, correct_dates, on=None):
         f"MASTERED | {namespace} | {slugify_topic(topic)} | {when.isoformat()} | expires:{expires.isoformat()}\n"
         f"Correct on {dates}. Spot-check again after the expiry date."
     )
+
+
+def build_material(namespace, topic, source_type, title, summary, reference="", on=None):
+    """What the student actually studied, as opposed to what they got wrong.
+
+    Kept in its own namespace so it never dilutes the mistake recall the
+    weakness briefing ranks over.
+    """
+    lines = [
+        f"MATERIAL | {namespace} | {slugify_topic(topic)} | {_on(on)} | source:{source_type}",
+        f"Studied: {title}",
+    ]
+    if summary:
+        lines.append(f"Covers: {summary}")
+    if reference:
+        lines.append(f"Reference: {reference}")
+    return "\n".join(lines)
+
+
+def source_of(text):
+    """The source tag from a MATERIAL header, for example pdf or youtube."""
+    match = _SOURCE.search(str(text or ""))
+    return match.group(1).strip() if match else ""
 
 
 def build_pattern(pattern_name, body, subjects, on=None):
