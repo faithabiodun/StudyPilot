@@ -5,6 +5,7 @@ import { failure, readJson, success } from "../http";
 import { requireUser, type AppEnv } from "../auth/users";
 import { cleanSafeString } from "../lib/text";
 import { resumePoints, saveProgress, studyHistory, weaknessBriefing } from "../memory/services";
+import { background } from "../runtime";
 
 const memory = new Hono<AppEnv>({ strict: false });
 memory.use("*", requireUser);
@@ -42,7 +43,7 @@ memory.post("/progress", async (c) => {
   // The student is mid-quiz and should not wait on a Walrus write, so the
   // response returns at once and the write finishes in the background. It
   // reports "queued" rather than claiming a write that has not happened yet.
-  c.executionCtx.waitUntil(saveProgress(c.env, userId, key, label, payload, state));
+  await background(c as never, saveProgress(c.env, userId, key, label, payload, state));
   return success("Progress queued", { enabled: true, written: 0, queued: 1, error: "" });
 });
 

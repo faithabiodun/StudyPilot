@@ -3,6 +3,7 @@ import { connect, type Sql } from "../db";
 import type { Env } from "../env";
 import { HttpError } from "../http";
 import { decode, TokenError } from "./jwt";
+import { background } from "../runtime";
 
 export interface User {
   id: number;
@@ -146,7 +147,7 @@ export const database: MiddlewareHandler<AppEnv> = async (c, next) => {
   try {
     await next();
   } finally {
-    c.executionCtx.waitUntil(sql.end({ timeout: 2 }).catch(() => undefined));
+    await background(c as never, sql.end({ timeout: 2 }).catch(() => undefined));
   }
 };
 
