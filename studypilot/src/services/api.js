@@ -3,10 +3,9 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\
 const ACCESS_TOKEN_KEY = "studypilot_access_token";
 const REFRESH_TOKEN_KEY = "studypilot_refresh_token";
 
-// Render's free tier sleeps the backend after ~15 min idle and takes
-// 30-60s to wake. The first request after sleep often fails at the
-// connection level ("Failed to fetch") before the server is ready.
-// These retries absorb that cold start so features still reach the backend.
+// The API runs on Cloudflare Workers, which do not sleep, so these retries
+// only absorb a dropped or flaky connection ("Failed to fetch") rather than a
+// backend waking up.
 const NETWORK_RETRIES = 2;
 const RETRY_BACKOFF_MS = 2500;
 
@@ -28,8 +27,8 @@ function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
-// Ping the backend so a sleeping Render instance starts waking up before
-// the user triggers a real request. Best-effort: never throws.
+// Warm the connection to the API before the user triggers a real request.
+// Best-effort: never throws.
 export async function wakeBackend() {
   if (!API_BASE_URL) return false;
   try {

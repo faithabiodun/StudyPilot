@@ -1,6 +1,12 @@
-import { API_BASE_URL, apiRequest, refreshAccessToken } from "./api";
+import { apiRequest } from "./api";
+import { cleanExtractedText } from "@shared/text";
+import { selectStudyContext } from "@shared/context";
+import { parseTimedText } from "@shared/timedtext";
+import { buildStudyDocx } from "../lib/studyDocx";
 
 const GENERATION_TIMEOUT_MS = 180000;
+const MAX_CONTEXT_CHARS = 20000;
+const NO_CAPTIONS = "This video has no usable captions or transcript. Try a lecture-style video that has captions turned on.";
 
 function friendlyError(error) {
   if (error?.name === "AbortError") {
@@ -24,111 +30,93 @@ function friendlyError(error) {
 function withTimeout(run) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
-  return run(controller.signal).finally(() => window.clearTimeout(timeout));
-}
-
-export function generateYoutubeFlashcards(payload) {
-  return withTimeout((signal) =>
-    apiRequest("/youtube/flashcards/", { method: "POST", body: JSON.stringify(payload), signal }).catch((error) => {
+  return run(controller.signal)
+    .catch((error) => {
       throw new Error(friendlyError(error));
     })
-  );
-}
-
-export function generateYoutubeMCQs(payload) {
-  return withTimeout((signal) =>
-    apiRequest("/youtube/mcq/", { method: "POST", body: JSON.stringify(payload), signal }).catch((error) => {
-      throw new Error(friendlyError(error));
-    })
-  );
-}
-
-export function generateYoutubeQuiz(payload) {
-  return withTimeout((signal) =>
-    apiRequest("/youtube/quiz/", { method: "POST", body: JSON.stringify(payload), signal }).catch((error) => {
-      throw new Error(friendlyError(error));
-    })
-  );
+    .finally(() => window.clearTimeout(timeout));
 }
 
 /**
- * The DOCX endpoint streams a real Word file, so we handle the binary response
- * directly instead of going through apiRequest (which parses JSON).
+ * Step one for every YouTube tool: the server fetches the caption file (the
+ * browser is not allowed to), and the browser turns it into clean text here.
+ * Parsing an hour of captions is too much CPU for the free Cloudflare plan's
+ * per-request budget, so it happens on the student's device instead.
  */
-export async function downloadYoutubeDocx(payload) {
-  if (!API_BASE_URL) {
-    throw new Error("StudyPilot API URL is not configured.");
+async function prepareTranscript(youtubeUrl, signal) {
+  const response = await apiRequest("/youtube/transcript/", {
+    method: "POST",
+    body: JSON.stringify({ youtube_url: youtubeUrl }),
+    signal
+  });
+  const data = response?.data || {};
+  const transcript = data.format === "timedtext" ? parseTimedText(data.body || "") : cleanExtractedText(data.body || "");
+  if (transcript.length < 60) {
+    const error = new Error(NO_CAPTIONS);
+    error.status = 400;
+    throw error;
   }
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
-
-  // Retry connection-level failures so a Render cold start (sleeping
-  // backend) doesn't fail the download outright. JSON body is reusable.
-  const sendDocx = async (token) => {
-    let lastError;
-    for (let attempt = 0; attempt <= 2; attempt += 1) {
-      try {
-        return await fetch(`${API_BASE_URL}/youtube/docx/`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-      } catch (error) {
-        if (error?.name === "AbortError") throw error;
-        const networkFailure = error instanceof TypeError || error?.message === "Failed to fetch";
-        if (!networkFailure || attempt === 2) throw error;
-        lastError = error;
-        await new Promise((resolve) => setTimeout(resolve, 2500 * (attempt + 1)));
-      }
-    }
-    throw lastError;
+  return {
+    transcript,
+    title: data.title,
+    channel: data.channel,
+    video_id: data.video_id,
+    source: data.source
   };
+}
 
-  try {
-    let response = await sendDocx(localStorage.getItem("studypilot_access_token"));
+/** The two study contexts the generators use, picked with the server's own code. */
+function withContexts(prepared) {
+  const { transcript, ...meta } = prepared;
+  return {
+    ...meta,
+    context: selectStudyContext(transcript, MAX_CONTEXT_CHARS),
+    retry_context: selectStudyContext(transcript, MAX_CONTEXT_CHARS, 10)
+  };
+}
 
-    // Access token expired: refresh once and retry before giving up.
-    if (response.status === 401 && localStorage.getItem("studypilot_refresh_token")) {
-      const newToken = await refreshAccessToken();
-      if (newToken) {
-        response = await sendDocx(newToken);
-      }
-    }
+function generate(path, payload) {
+  return withTimeout(async (signal) => {
+    const prepared = withContexts(await prepareTranscript(payload.youtube_url, signal));
+    return apiRequest(path, { method: "POST", body: JSON.stringify({ ...payload, prepared }), signal });
+  });
+}
 
-    if (!response.ok) {
-      let message = `Request failed with ${response.status}`;
-      try {
-        const data = await response.json();
-        message = data?.message || message;
-      } catch {
-        message = friendlyError({ status: response.status });
-      }
-      const error = new Error(message);
-      error.status = response.status;
-      throw error;
-    }
+export function generateYoutubeFlashcards(payload) {
+  return generate("/youtube/flashcards/", payload);
+}
 
-    const blob = await response.blob();
-    const disposition = response.headers.get("Content-Disposition") || "";
-    const match = /filename="?([^"]+)"?/.exec(disposition);
-    const filename = match ? match[1] : "studypilot-notes.docx";
+export function generateYoutubeMCQs(payload) {
+  return generate("/youtube/mcq/", payload);
+}
+
+export function generateYoutubeQuiz(payload) {
+  return generate("/youtube/quiz/", payload);
+}
+
+/**
+ * The server structures the lecture into study content; the Word file is
+ * assembled here from that content and downloaded directly.
+ */
+export function downloadYoutubeDocx(payload) {
+  return withTimeout(async (signal) => {
+    const prepared = await prepareTranscript(payload.youtube_url, signal);
+    const response = await apiRequest("/youtube/docx/", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, prepared }),
+      signal
+    });
+    const { content, metadata, source, filename } = response?.data || {};
+    const blob = await buildStudyDocx(content, metadata, source);
 
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = filename;
+    link.download = filename || "studypilot-notes.docx";
     document.body.appendChild(link);
     link.click();
     link.remove();
     window.URL.revokeObjectURL(url);
-    return { filename };
-  } catch (error) {
-    throw new Error(friendlyError(error));
-  } finally {
-    window.clearTimeout(timeout);
-  }
+    return { filename: link.download };
+  });
 }
