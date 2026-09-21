@@ -78,9 +78,13 @@ app.onError((error, c) => {
   return c.json({ success: false, message: "Something went wrong on our side. Please try again.", errors: {} }, 500);
 });
 
-// Everything that is not the API is the React app. With run_worker_first scoped
-// to /api/*, assets are normally served before the Worker runs; this covers
-// the rest (and local dev).
-app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
+// Everything that is not the API is the React app. On Workers the assets
+// binding serves it (run_worker_first is scoped to /api/*, so this is mostly
+// local dev); on Vercel the platform serves the static build and never routes
+// these here.
+app.all("*", (c) => {
+  if (c.env?.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
+  return c.json({ detail: "Not found." }, 404);
+});
 
 export default app;

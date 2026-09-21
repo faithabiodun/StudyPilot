@@ -1,0 +1,18 @@
+{
+  "name": "studypilot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "StudyPilot deployed on Vercel: the React app as static files, the Hono API as one function under /api.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@mysten-incubation/memwal": "0.1.7",
+    "@mysten/seal": "^1.4.13",
+    "@mysten/sui": "^2.26.2",
+    "@noble/hashes": "^2.4.0",
+    "hono": "^4.13.8",
+    "postgres": "^3.4.9"
+  }
+}
