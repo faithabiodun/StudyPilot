@@ -1,4 +1,5 @@
-import { apiRequest, refreshAccessToken } from "./api";
+import { apiRequest } from "./api";
+import { PdfReadError, readPdf } from "../lib/pdfText";
 
 export const MAX_PDF_UPLOAD_MB = Number(import.meta.env.VITE_MAX_PDF_UPLOAD_MB || 50);
 const UPLOAD_TIMEOUT_MS = 180000;
@@ -53,28 +54,28 @@ export async function uploadMaterial({ file, title, maxPdfUploadMb = MAX_PDF_UPL
     const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
     throw new Error(`This PDF is ${sizeMb}MB. StudyPilot can process PDFs up to ${uploadLimitMb}MB. Please upload a smaller or compressed PDF.`);
   }
+  if (!/\.pdf$/i.test(file?.name || "")) {
+    throw new Error("Only readable PDF files are supported by PDF Study Converter.");
+  }
+
+  // The PDF is read right here in the browser and only its text is uploaded:
+  // the file itself never leaves the student's device.
+  let extracted;
+  try {
+    extracted = await readPdf(file);
+  } catch (error) {
+    throw new Error(error instanceof PdfReadError ? error.message : "StudyPilot could not read this PDF. Please try another readable PDF.");
+  }
+
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-  // FormData is a one-shot stream, so apiRequest cannot auto-retry it. We build
-  // a fresh FormData per attempt and refresh the token ourselves on a 401.
-  const buildForm = () => {
-    const formData = new FormData();
-    formData.append("file", file);
-    if (title) formData.append("title", title);
-    return formData;
-  };
   try {
-    try {
-      return await apiRequest("/documents/upload/", { method: "POST", body: buildForm(), signal: controller.signal });
-    } catch (error) {
-      if (error?.status === 401 && localStorage.getItem("studypilot_refresh_token")) {
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          return await apiRequest("/documents/upload/", { method: "POST", body: buildForm(), signal: controller.signal });
-        }
-      }
-      throw error;
-    }
+    // A JSON body can be re-sent, so apiRequest handles the 401 refresh itself.
+    return await apiRequest("/documents/upload/", {
+      method: "POST",
+      body: JSON.stringify({ ...extracted, title: title || "", original_filename: file.name, file_size: file.size }),
+      signal: controller.signal
+    });
   } catch (error) {
     throw normalizeUploadError(error, uploadLimitMb);
   } finally {
