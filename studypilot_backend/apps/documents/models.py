@@ -21,7 +21,12 @@ class Document(models.Model):
     focused_end_page = models.PositiveIntegerField(null=True, blank=True)
     extracted_text = models.TextField(blank=True)
     focused_extracted_text = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.UPLOADED)
+    # The best-scoring slices of the text for generation, first pass and retry.
+    # The Cloudflare Worker computes these in the browser at upload time so it
+    # does not re-scan the whole document on every request.
+    study_context = models.TextField(blank=True, default="")
+    study_context_retry = models.TextField(blank=True, default="")
+    status =models.CharField(max_length=20, choices=Status.choices, default=Status.UPLOADED)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
