@@ -1,0 +1,38 @@
+{
+  // One Worker serves the whole app: the built React frontend as static
+  // assets, and the API under /api. Same origin, so there is no CORS to keep in
+  // sync and the frontend calls a relative "/api".
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "studypilot",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  // postgres.js needs Node's net/tls shims, which nodejs_compat maps onto
+  // Cloudflare's TCP sockets.
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "../studypilot/dist",
+    "binding": "ASSETS",
+    // React Router owns every non-API path, so unknown paths get index.html.
+    "not_found_handling": "single-page-application",
+    // Without this, an /api path that happens to match nothing in dist would
+    // still be answered with index.html instead of reaching the API.
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": { "enabled": true },
+  "vars": {
+    "DEEPSEEK_BASE_URL": "https://api.deepseek.com",
+    "DEEPSEEK_MODEL": "deepseek-v4-flash",
+    "DEEPSEEK_TIMEOUT_SECONDS": "90",
+    "JWT_ACCESS_TOKEN_LIFETIME_MINUTES": "60",
+    "JWT_REFRESH_TOKEN_LIFETIME_DAYS": "7",
+    "MAX_EXTRACTED_TEXT_CHARS": "80000",
+    "MAX_DEEPSEEK_CONTEXT_CHARS": "20000",
+    "MEMWAL_ENABLED": "true",
+    "MEMWAL_ACCOUNT_ID": "0x76167e28bdd09f8d3d586a52a6c2bcaac291c8ad412fa012c33b336bb25f9fd9",
+    "SUPABASE_URL": "https://kzacptowrsdsuatjvtxm.supabase.co"
+  }
+  // Secrets, set with `wrangler secret put`, never committed:
+  //   DATABASE_URL, SECRET_KEY, SUPABASE_ANON_KEY, DEEPSEEK_API_KEY,
+  //   YOUTUBE_API_KEY, GOOGLE_BOOKS_API_KEY, MEMWAL_PRIVATE_KEY,
+  //   PASSWORD_FN_SECRET, GOOGLE_CLIENT_ID (optional)
+}
