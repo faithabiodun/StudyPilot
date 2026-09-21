@@ -1,0 +1,26 @@
+{
+  "name": "studypilot-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mysten-incubation/memwal": "^0.1.7",
+    "@mysten/seal": "^1.4.13",
+    "@mysten/sui": "^2.31.3",
+    "@noble/hashes": "^2.4.0",
+    "hono": "^4.13.8",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260919.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.135.0"
+  }
+}
