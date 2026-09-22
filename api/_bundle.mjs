@@ -44606,6 +44606,7 @@ async function chat(env, messages2, opts) {
     max_tokens: opts.maxTokens
   };
   if (opts.json) body.response_format = { type: "json_object" };
+  if (opts.thinking === false) body.thinking = { type: "disabled" };
   let response;
   try {
     response = await fetch(`${(env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/$/, "")}/chat/completions`, {
@@ -44629,17 +44630,18 @@ async function chat(env, messages2, opts) {
   const payload = await response.json();
   const choice2 = payload.choices?.[0];
   const content = choice2?.message?.content ?? "";
+  const truncated = choice2?.finish_reason === "length";
   if (choice2?.finish_reason && choice2.finish_reason !== "stop") {
     console.warn(`DeepSeek finish_reason=${choice2.finish_reason} usage=${JSON.stringify(payload.usage ?? {})}`);
   }
   const text = Array.isArray(content) ? cleanExtractedText(content.map((item) => item?.text ?? String(item)).join(" ")) : cleanExtractedText(content);
-  return text;
+  return { text, truncated };
 }
 async function generateText(env, prompt, systemPrompt, temperature = 0.4, maxTokens = 2200) {
   const messages2 = [];
   if (systemPrompt) messages2.push({ role: "system", content: systemPrompt });
   messages2.push({ role: "user", content: prompt });
-  const text = await chat(env, messages2, { temperature, maxTokens });
+  const { text } = await chat(env, messages2, { temperature, maxTokens });
   if (!text) throw new AIServiceError("DeepSeek returned an empty response.");
   return text;
 }
@@ -44665,15 +44667,22 @@ function parseJsonPayload(text) {
 async function generateJson(env, prompt, systemPrompt, temperature = 0.3, maxTokens = 2200) {
   const jsonSystem = `${systemPrompt || ""}
 Return valid JSON only. Do not include markdown fences, commentary, or prose outside JSON.`.trim();
-  const text = await chat(
-    env,
-    [
-      { role: "system", content: jsonSystem },
-      { role: "user", content: prompt }
-    ],
-    { temperature, maxTokens, json: true }
-  );
-  return parseJsonPayload(text);
+  const messages2 = [
+    { role: "system", content: jsonSystem },
+    { role: "user", content: prompt }
+  ];
+  const attempt = async (thinking) => {
+    const { text, truncated } = await chat(env, messages2, { temperature, maxTokens, json: true, thinking });
+    if (truncated) throw new AIServiceError("DeepSeek response was cut off before the JSON finished.");
+    return parseJsonPayload(text);
+  };
+  try {
+    return await attempt(true);
+  } catch (error) {
+    if (error instanceof AINotConfigured) throw error;
+    console.warn(`DeepSeek JSON attempt failed (${error instanceof Error ? error.message : error}); retrying without reasoning.`);
+    return attempt(false);
+  }
 }
 function difficultyGuidance(difficulty) {
   return {
@@ -44702,7 +44711,7 @@ Return JSON exactly like:
 Selected PDF context:
 ${context}
 `;
-  return generateJson(env, prompt, "You generate high-quality academic flashcards from PDF study context.", 0.25, 6e3);
+  return generateJson(env, prompt, "You generate high-quality academic flashcards from PDF study context.", 0.25, 1e4);
 }
 function generateMcqs(env, context, difficulty, count3) {
   const prompt = `
@@ -44723,7 +44732,7 @@ Return JSON exactly like:
 Selected PDF context:
 ${context}
 `;
-  return generateJson(env, prompt, "You generate high-quality academic MCQs from PDF study context.", 0.25, 8e3);
+  return generateJson(env, prompt, "You generate high-quality academic MCQs from PDF study context.", 0.25, 14e3);
 }
 function generateMixedQuiz(env, context, difficulty, count3, questionTypes, focusGuidance = "") {
   const prompt = `
@@ -44747,7 +44756,7 @@ ${focusGuidance}
 Selected PDF context:
 ${context}
 `;
-  return generateJson(env, prompt, "You generate high-quality mixed academic quizzes from PDF study context.", 0.25, 9e3);
+  return generateJson(env, prompt, "You generate high-quality mixed academic quizzes from PDF study context.", 0.25, 16e3);
 }
 async function generateDocxContent(env, transcript, metadata, options, alreadyClean = false) {
   const cleaned = alreadyClean ? transcript.trim() : cleanExtractedText(transcript);
@@ -44850,7 +44859,7 @@ ${text}
     prompt,
     "You produce clean JSON for StudyPilot DOCX generation. Never include markdown or prose outside JSON.",
     0.25,
-    12e3
+    16e3
   );
 }
 
