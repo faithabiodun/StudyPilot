@@ -8,7 +8,7 @@
 // Counts are never stored. Writers append records and readers count what comes
 // back, because the underlying API is append-only with no update or delete.
 
-import { MemWal } from "@mysten-incubation/memwal";
+import type { MemWal } from "@mysten-incubation/memwal";
 import type { Env } from "../env";
 import {
   SEVERITY_WEIGHTS,
@@ -55,9 +55,13 @@ export function memwalEnabled(env: Env): boolean {
 // both, with their Sui RPC round trips, on every request.
 let cached: { key: string; client: MemWal } | null = null;
 
-function client(env: Env): MemWal {
+// Imported on first use rather than at module load: the SDK pulls in the Sui
+// and SEAL libraries, and memory is optional, so a problem loading it must not
+// be able to stop quizzes being graded.
+async function client(env: Env): Promise<MemWal> {
   const key = `${env.MEMWAL_ACCOUNT_ID}:${env.MEMWAL_PRIVATE_KEY}`;
   if (!cached || cached.key !== key) {
+    const { MemWal } = await import("@mysten-incubation/memwal");
     cached = { key, client: MemWal.create({ key: env.MEMWAL_PRIVATE_KEY!, accountId: env.MEMWAL_ACCOUNT_ID }) };
   }
   return cached.client;
@@ -98,7 +102,7 @@ async function recallTexts(
   limit = RECALL_LIMIT,
   maxDistance?: number,
 ): Promise<[string[], boolean]> {
-  const result = await client(env).recall({
+  const result = await (await client(env)).recall({
     query,
     limit,
     namespace,
@@ -112,7 +116,7 @@ async function rememberAll(env: Env, namespace: string, texts: string[]): Promis
   let written = 0;
   for (let start = 0; start < texts.length; start += BULK_CHUNK) {
     const chunk = texts.slice(start, start + BULK_CHUNK);
-    await client(env).rememberBulkAsync(chunk.map((text) => ({ text, namespace })));
+    await (await client(env)).rememberBulkAsync(chunk.map((text) => ({ text, namespace })));
     written += chunk.length;
   }
   return written;
