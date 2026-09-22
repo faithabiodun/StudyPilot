@@ -13,7 +13,12 @@ you study and every half-finished quiz is written to
 of what it asked you and becomes a memory of what you keep getting wrong. The
 same memory is readable from any other MemWal client on the same account.
 
-- **Live app:** https://nowstudypilot.onrender.com
+- **Live app:** https://study-pilot-abiodunfaith60-gmailcoms-projects.vercel.app
+
+The app and its API run together on Vercel: the React build is served as static
+files and the API is one function under `/api`. The API is a TypeScript port of
+the Django backend in `studypilot_backend/`, which is kept as a reference and a
+rollback; see `studypilot_worker/README.md`. Supabase holds the database.
 
 ## What is StudyPilot?
 
