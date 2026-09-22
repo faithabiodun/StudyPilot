@@ -6,6 +6,7 @@
 import { Hono } from "hono";
 import { HttpError } from "./http";
 import { database, requireUser, type AppEnv } from "./auth/users";
+import { onWorkers } from "./runtime";
 import accounts from "./routes/accounts";
 import academics from "./routes/academics";
 import advisor from "./routes/advisor";
@@ -21,11 +22,13 @@ import youtube from "./routes/youtube";
 // "/api/documents" and "/api/documents/" both work. Django's URLs all ended in
 // a slash (APPEND_SLASH redirected the rest), and that is what the frontend
 // sends, so both forms have to resolve.
+const RUNTIME = onWorkers ? "cloudflare-workers" : "node";
+
 const app = new Hono<AppEnv>({ strict: false });
 
 const api = new Hono<AppEnv>({ strict: false });
 
-api.get("/health", (c) => c.json({ success: true, message: "StudyPilot backend is running", runtime: "cloudflare-workers" }));
+api.get("/health", (c) => c.json({ success: true, message: "StudyPilot backend is running", runtime: RUNTIME }));
 
 // Health checks that touch the database need a connection, so they sit after
 // the database middleware; the plain one above stays free of it.
@@ -42,7 +45,7 @@ api.get("/health/deployment", async (c) => {
   return c.json({
     success: true,
     backend: "running",
-    runtime: "cloudflare-workers",
+    runtime: RUNTIME,
     database: database ? "connected" : "unavailable",
     deepseek_configured: Boolean((c.env.DEEPSEEK_API_KEY || "").trim()),
     memwal_enabled: c.env.MEMWAL_ENABLED === "true" && Boolean(c.env.MEMWAL_PRIVATE_KEY),

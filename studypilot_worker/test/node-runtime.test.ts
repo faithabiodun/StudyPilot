@@ -17,7 +17,7 @@ describe("running on Node", () => {
   it("serves the health check", async () => {
     const response = await app.fetch(new Request("https://studypilot.test/api/health/"), env);
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ success: true, runtime: "cloudflare-workers" });
+    expect(await response.json()).toMatchObject({ success: true, runtime: "node" });
   });
 
   it("answers unknown API paths with 404 rather than the React app", async () => {

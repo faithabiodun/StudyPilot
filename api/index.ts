@@ -2,25 +2,12 @@
 // served here as one Node function, with every /api path rewritten to it by
 // vercel.json.
 //
-// Hono reads configuration from `c.env`, which on Workers is the bindings
-// object. Vercel's adapter does not pass one, so process.env is injected here.
+// Vercel's Node runtime invokes a function with Node's (req, res), while Hono
+// speaks Request/Response, so getRequestListener bridges the two. Hono reads
+// configuration from `c.env`, which on Workers is the bindings object; here it
+// is process.env.
 
-import { Hono } from "hono";
-import { handle } from "hono/vercel";
+import { getRequestListener } from "@hono/node-server";
 import app from "../studypilot_worker/src/index";
 
-export const config = { runtime: "nodejs" };
-
-const root = new Hono();
-
-root.all("*", async (c) => {
-  let executionCtx: ExecutionContext | undefined;
-  try {
-    executionCtx = c.executionCtx;
-  } catch {
-    // No deferred work on this platform; the app awaits instead.
-  }
-  return app.fetch(c.req.raw, process.env as never, executionCtx as never);
-});
-
-export default handle(root);
+export default getRequestListener((request) => app.fetch(request, process.env as never));
