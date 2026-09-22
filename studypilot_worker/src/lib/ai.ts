@@ -20,9 +20,17 @@ interface ChatOptions {
   temperature: number;
   maxTokens: number;
   json?: boolean;
+  /** false turns the model's hidden reasoning off. See generateJson. */
+  thinking?: boolean;
 }
 
-async function chat(env: Env, messages: { role: string; content: string }[], opts: ChatOptions): Promise<string> {
+interface ChatResult {
+  text: string;
+  /** The model hit max_tokens, so whatever came back is cut off mid-answer. */
+  truncated: boolean;
+}
+
+async function chat(env: Env, messages: { role: string; content: string }[], opts: ChatOptions): Promise<ChatResult> {
   const key = apiKey(env);
   const timeoutMs = intVar(env.DEEPSEEK_TIMEOUT_SECONDS, 45) * 1000;
   const body: Record<string, unknown> = {
@@ -32,6 +40,7 @@ async function chat(env: Env, messages: { role: string; content: string }[], opt
     max_tokens: opts.maxTokens,
   };
   if (opts.json) body.response_format = { type: "json_object" };
+  if (opts.thinking === false) body.thinking = { type: "disabled" };
 
   let response: Response;
   try {
@@ -61,21 +70,22 @@ async function chat(env: Env, messages: { role: string; content: string }[], opt
   const choice = payload.choices?.[0];
   const content = choice?.message?.content ?? "";
   // "length" means the model ran out of budget mid-answer, which for JSON means
-  // an unparseable half-object. Worth seeing in the logs rather than guessing.
+  // an unparseable half-object. The caller retries rather than guessing.
+  const truncated = choice?.finish_reason === "length";
   if (choice?.finish_reason && choice.finish_reason !== "stop") {
     console.warn(`DeepSeek finish_reason=${choice.finish_reason} usage=${JSON.stringify(payload.usage ?? {})}`);
   }
   const text = Array.isArray(content)
     ? cleanExtractedText(content.map((item) => (item as { text?: string })?.text ?? String(item)).join(" "))
     : cleanExtractedText(content);
-  return text;
+  return { text, truncated };
 }
 
 export async function generateText(env: Env, prompt: string, systemPrompt?: string, temperature = 0.4, maxTokens = 2200): Promise<string> {
   const messages = [];
   if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
   messages.push({ role: "user", content: prompt });
-  const text = await chat(env, messages, { temperature, maxTokens });
+  const { text } = await chat(env, messages, { temperature, maxTokens });
   if (!text) throw new AIServiceError("DeepSeek returned an empty response.");
   return text;
 }
@@ -100,17 +110,34 @@ export function parseJsonPayload(text: string): Record<string, unknown> {
   }
 }
 
+/**
+ * JSON generation, with one retry that turns the model's reasoning off.
+ *
+ * DeepSeek's reasoning happens inside the same token budget as the answer: a
+ * ten-question quiz measured 4,707 reasoning tokens against 1,167 of actual
+ * JSON, and on a full-length PDF context the thinking eats the budget and the
+ * JSON comes back cut in half. Reasoning is kept for the first attempt because
+ * it writes better questions; the retry drops it, which is smaller, faster and
+ * reliably complete.
+ */
 export async function generateJson(env: Env, prompt: string, systemPrompt: string, temperature = 0.3, maxTokens = 2200) {
   const jsonSystem = `${systemPrompt || ""}\nReturn valid JSON only. Do not include markdown fences, commentary, or prose outside JSON.`.trim();
-  const text = await chat(
-    env,
-    [
-      { role: "system", content: jsonSystem },
-      { role: "user", content: prompt },
-    ],
-    { temperature, maxTokens, json: true },
-  );
-  return parseJsonPayload(text);
+  const messages = [
+    { role: "system", content: jsonSystem },
+    { role: "user", content: prompt },
+  ];
+  const attempt = async (thinking: boolean) => {
+    const { text, truncated } = await chat(env, messages, { temperature, maxTokens, json: true, thinking });
+    if (truncated) throw new AIServiceError("DeepSeek response was cut off before the JSON finished.");
+    return parseJsonPayload(text);
+  };
+  try {
+    return await attempt(true);
+  } catch (error) {
+    if (error instanceof AINotConfigured) throw error;
+    console.warn(`DeepSeek JSON attempt failed (${error instanceof Error ? error.message : error}); retrying without reasoning.`);
+    return attempt(false);
+  }
 }
 
 function difficultyGuidance(difficulty: string): string {
@@ -144,7 +171,7 @@ Return JSON exactly like:
 Selected PDF context:
 ${context}
 `;
-  return generateJson(env, prompt, "You generate high-quality academic flashcards from PDF study context.", 0.25, 6000);
+  return generateJson(env, prompt, "You generate high-quality academic flashcards from PDF study context.", 0.25, 10000);
 }
 
 export function generateMcqs(env: Env, context: string, difficulty: string, count: number) {
@@ -166,7 +193,7 @@ Return JSON exactly like:
 Selected PDF context:
 ${context}
 `;
-  return generateJson(env, prompt, "You generate high-quality academic MCQs from PDF study context.", 0.25, 8000);
+  return generateJson(env, prompt, "You generate high-quality academic MCQs from PDF study context.", 0.25, 14000);
 }
 
 export function generateMixedQuiz(env: Env, context: string, difficulty: string, count: number, questionTypes: string[], focusGuidance = "") {
@@ -191,7 +218,7 @@ ${focusGuidance}
 Selected PDF context:
 ${context}
 `;
-  return generateJson(env, prompt, "You generate high-quality mixed academic quizzes from PDF study context.", 0.25, 9000);
+  return generateJson(env, prompt, "You generate high-quality mixed academic quizzes from PDF study context.", 0.25, 16000);
 }
 
 export interface DocxOptions {
@@ -312,6 +339,6 @@ ${text}
     prompt,
     "You produce clean JSON for StudyPilot DOCX generation. Never include markdown or prose outside JSON.",
     0.25,
-    12000,
+    16000,
   );
 }
