@@ -15,5 +15,11 @@
     "@noble/hashes": "^2.4.0",
     "hono": "^4.13.8",
     "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "scripts": {
+    "build": "npm --prefix studypilot install && npm --prefix studypilot run build && node scripts/build-api.mjs"
   }
 }
