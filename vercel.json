@@ -1,15 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm --prefix studypilot install && npm --prefix studypilot run build",
+  "buildCommand": "npm run build",
   "outputDirectory": "studypilot/dist",
   "functions": {
-    "api/index.ts": {
+    "api/index.js": {
       "maxDuration": 300,
       "memory": 1024
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }

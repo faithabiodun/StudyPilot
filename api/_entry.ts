@@ -1,6 +1,5 @@
-// Vercel entry point. The same Hono app that runs on Cloudflare Workers is
-// served here as one Node function, with every /api path rewritten to it by
-// vercel.json.
+// Source for api/_bundle.mjs (see scripts/build-api.mjs). Not a route itself:
+// Vercel ignores files in api/ whose names start with an underscore.
 //
 // Vercel's Node runtime invokes a function with Node's (req, res), while Hono
 // speaks Request/Response, so getRequestListener bridges the two. Hono reads
