@@ -20,6 +20,7 @@
     "esbuild": "^0.28.2"
   },
   "scripts": {
-    "build": "npm --prefix studypilot install && npm --prefix studypilot run build && node scripts/build-api.mjs"
+    "build": "npm --prefix studypilot install && npm --prefix studypilot run build && node scripts/build-api.mjs",
+    "walrus:status": "node scripts/walrus-status.mjs"
   }
 }
