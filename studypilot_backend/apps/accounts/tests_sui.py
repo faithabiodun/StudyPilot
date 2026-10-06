@@ -7,6 +7,7 @@ implementation rather than merely agreeing with itself.
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils.dateparse import parse_datetime
 
 from .models import SuiLoginChallenge
 from .sui import (
@@ -67,13 +68,13 @@ class SignatureVerificationTests(SimpleTestCase):
 
 class SuiAuthEndpointTests(TestCase):
     def _challenge(self):
-        response = self.client.post(reverse("sui_challenge"), content_type="application/json")
+        response = self.client.post(reverse("sui_challenge"), data={"address": SDK_ADDRESS}, content_type="application/json")
         return response.json()["data"]
 
     def test_challenge_returns_a_nonce_and_the_exact_message_to_sign(self):
         data = self._challenge()
         self.assertIn("nonce", data)
-        self.assertEqual(data["message"], sui_challenge_message(data["nonce"]))
+        self.assertEqual(data["message"], sui_challenge_message(data["nonce"], data["origin"], SDK_ADDRESS, parse_datetime(data["issued_at"])))
 
     def test_unknown_nonce_is_rejected(self):
         response = self.client.post(

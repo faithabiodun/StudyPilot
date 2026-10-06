@@ -6,6 +6,8 @@ import SuiLogo from "../common/SuiLogo";
 import { useAuth } from "../../context/AuthContext";
 import { loginWithSui, requestSuiChallenge } from "../../services/authService";
 import { postAuthPath } from "../../utils/user";
+import { API_BASE_URL } from "../../services/api";
+import { validateSuiChallenge } from "../../utils/suiChallenge";
 
 /**
  * Sign in by proving ownership of a Sui wallet.
@@ -35,9 +37,13 @@ export default function SuiSignInButton({ label = "Continue with Sui", onError }
     setBusy(true);
     report("");
     try {
-      const challenge = await requestSuiChallenge();
+      const challenge = await requestSuiChallenge(account.address);
+      const message = validateSuiChallenge(challenge, account.address, [
+        window.location.origin, new URL(API_BASE_URL, window.location.origin).origin
+      ]);
       const { signature } = await signPersonalMessage({
-        message: new TextEncoder().encode(challenge.message)
+        account,
+        message: new TextEncoder().encode(message)
       });
       const user = await loginWithSui({
         address: account.address,
@@ -65,6 +71,9 @@ export default function SuiSignInButton({ label = "Continue with Sui", onError }
         <SuiLogo size={18} />
         {busy ? "Waiting for your wallet..." : account?.address ? label : "Connect Sui Wallet"}
       </Button>
+      <p className="mb-5 -mt-3 text-center text-xs text-slate-500">
+        Sign a message to verify your wallet. No transaction, fees, or access to your funds.
+      </p>
       <ConnectModal
         trigger={<span />}
         open={connectOpen}

@@ -1,4 +1,4 @@
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
 
 const ACCESS_TOKEN_KEY = "studypilot_access_token";
 const REFRESH_TOKEN_KEY = "studypilot_refresh_token";
@@ -54,15 +54,17 @@ export async function refreshAccessToken() {
       });
       if (!response.ok) {
         // Refresh token expired or blacklisted: force re-login.
-        clearTokens();
+        if (localStorage.getItem(REFRESH_TOKEN_KEY) === refresh) clearTokens();
         return null;
       }
       const data = await response.json();
       const access = data?.access || data?.data?.access;
       if (!access) {
-        clearTokens();
+        if (localStorage.getItem(REFRESH_TOKEN_KEY) === refresh) clearTokens();
         return null;
       }
+      // Logout or a new login may have happened while this request was in flight.
+      if (localStorage.getItem(REFRESH_TOKEN_KEY) !== refresh) return null;
       localStorage.setItem(ACCESS_TOKEN_KEY, access);
       // ROTATE_REFRESH_TOKENS is off, but support it if it ever turns on.
       const rotated = data?.refresh || data?.data?.refresh;
@@ -80,12 +82,12 @@ export async function refreshAccessToken() {
 
 async function sendRequest(path, fetchOptions, token, isFormData) {
   return fetch(`${API_BASE_URL}${path}`, {
+    ...fetchOptions,
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(fetchOptions.headers || {})
-    },
-    ...fetchOptions
+    }
   });
 }
 
@@ -99,7 +101,10 @@ async function sendWithColdStartRetry(path, fetchOptions, token, isFormData) {
       return await sendRequest(path, fetchOptions, token, isFormData);
     } catch (error) {
       if (error?.name === "AbortError") throw error;
-      if (!isNetworkFailure(error) || attempt === NETWORK_RETRIES) throw error;
+      // A lost response can follow a successful write. Retrying it could
+      // create duplicates or consume a wallet's one-time nonce twice.
+      const method = (fetchOptions.method || "GET").toUpperCase();
+      if (!["GET", "HEAD"].includes(method) || !isNetworkFailure(error) || attempt === NETWORK_RETRIES) throw error;
       lastError = error;
       await delay(RETRY_BACKOFF_MS * (attempt + 1));
     }

@@ -42919,19 +42919,26 @@ async function decode(token, secret, expected) {
   } catch {
     throw new TokenError("Token is invalid");
   }
-  if (header.alg !== "HS256") throw new TokenError("Token is invalid");
-  const valid = await crypto.subtle.verify(
-    "HMAC",
-    await hmacKey(secret),
-    b64urlDecode(parts[2]),
-    encoder.encode(`${parts[0]}.${parts[1]}`)
-  );
+  if (!header || header.alg !== "HS256" || !payload || typeof payload !== "object") throw new TokenError("Token is invalid");
+  let valid = false;
+  try {
+    valid = await crypto.subtle.verify(
+      "HMAC",
+      await hmacKey(secret),
+      b64urlDecode(parts[2]),
+      encoder.encode(`${parts[0]}.${parts[1]}`)
+    );
+  } catch {
+    throw new TokenError("Token is invalid");
+  }
   if (!valid) throw new TokenError("Token is invalid");
-  if (typeof payload.exp !== "number" || payload.exp <= Math.floor(Date.now() / 1e3)) {
+  if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || payload.exp <= Math.floor(Date.now() / 1e3)) {
     throw new TokenError("Token is expired");
   }
   if (payload.token_type !== expected) throw new TokenError("Token has wrong type");
-  if (!payload.jti || payload.user_id === void 0) throw new TokenError("Token contained no recognizable user identification");
+  if (typeof payload.jti !== "string" || !payload.jti || !["string", "number"].includes(typeof payload.user_id) || !/^[1-9]\d*$/.test(String(payload.user_id)) || !Number.isSafeInteger(Number(payload.user_id))) {
+    throw new TokenError("Token contained no recognizable user identification");
+  }
   return payload;
 }
 function newJti() {
@@ -43865,12 +43872,16 @@ var RESERVED_USERNAMES = /* @__PURE__ */ new Set([
   "undefined",
   "system"
 ]);
-function suiChallengeMessage(nonce) {
+function suiChallengeMessage(nonce, origin, address, issuedAt) {
   return `Sign in to StudyPilot
 
 This signature proves you own this wallet. It is free and does not create a transaction.
 
-Nonce: ${nonce}`;
+Website: ${origin}
+Wallet: ${address}
+Nonce: ${nonce}
+Issued at: ${issuedAt.toISOString()}
+Expires at: ${new Date(issuedAt.getTime() + SUI_CHALLENGE_TTL_SECONDS * 1e3).toISOString()}`;
 }
 async function usernameProblem(sql, value) {
   const handle = str(value).trim();
@@ -43949,7 +43960,10 @@ accounts.post("/google", async (c) => {
   const email = (payload.email || "").toLowerCase();
   const googleId = payload.sub;
   if (!email || !googleId) return failure("Google token missing required profile data", {}, 400);
+  if (payload.email_verified !== "true") return failure("Google email is not verified", {}, 401);
   let user = await userByEmail(sql, email);
+  if (user && !user.is_active) return failure("User account is disabled", {}, 403);
+  if (user?.google_id && user.google_id !== googleId) return failure("Google account does not match", {}, 401);
   if (!user) {
     user = await createUser(sql, {
       email,
@@ -43985,6 +43999,9 @@ accounts.post("/supabase-google", async (c) => {
   }
   if (response.status !== 200) return failure("Invalid Supabase session token.", {}, 401);
   const payload = await response.json();
+  if (!payload.email_confirmed_at || !(payload.app_metadata?.providers || [payload.app_metadata?.provider]).includes("google")) {
+    return failure("A verified Google account is required", {}, 401);
+  }
   const email = (payload.email || "").toLowerCase();
   const supabaseUserId = payload.id || "";
   const metadata = payload.user_metadata || {};
@@ -43992,6 +44009,8 @@ accounts.post("/supabase-google", async (c) => {
   const avatar = metadata.avatar_url || metadata.picture || "";
   if (!email || !supabaseUserId) return failure("Supabase user is missing required profile data", {}, 400);
   let user = await userByEmail(sql, email);
+  if (user && !user.is_active) return failure("User account is disabled", {}, 403);
+  if (user?.supabase_user_id && user.supabase_user_id !== supabaseUserId) return failure("Google account does not match", {}, 401);
   if (!user) {
     user = await createUser(sql, {
       email,
@@ -44017,11 +44036,20 @@ accounts.post("/supabase-google", async (c) => {
 });
 accounts.post("/sui/challenge", async (c) => {
   const sql = c.get("sql");
+  const body = await readJson(c.req.raw);
+  let address;
+  try {
+    address = normalizeAddress(body.address);
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "Invalid wallet address");
+  }
   const cutoff = new Date(Date.now() - SUI_CHALLENGE_TTL_SECONDS * 4 * 1e3);
   await sql`delete from accounts_suiloginchallenge where created_at < ${cutoff}`;
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b2) => b2.toString(16).padStart(2, "0")).join("");
-  await sql`insert into accounts_suiloginchallenge (nonce, created_at) values (${nonce}, ${/* @__PURE__ */ new Date()})`;
-  return success("Sui challenge issued", { nonce, message: suiChallengeMessage(nonce), expires_in: SUI_CHALLENGE_TTL_SECONDS });
+  const issuedAt = /* @__PURE__ */ new Date();
+  const origin = new URL(c.env.SUI_AUTH_ORIGIN || c.req.url).origin;
+  await sql`insert into accounts_suiloginchallenge (nonce, created_at) values (${nonce}, ${issuedAt})`;
+  return success("Sui challenge issued", { nonce, message: suiChallengeMessage(nonce, origin, address, issuedAt), origin, address, issued_at: issuedAt.toISOString(), expires_in: SUI_CHALLENGE_TTL_SECONDS });
 });
 accounts.post("/sui", async (c) => {
   const sql = c.get("sql");
@@ -44046,7 +44074,8 @@ accounts.post("/sui", async (c) => {
   }
   let verified;
   try {
-    verified = await verifyPersonalMessage(suiChallengeMessage(nonce), signature, address);
+    const origin = new URL(c.env.SUI_AUTH_ORIGIN || c.req.url).origin;
+    verified = await verifyPersonalMessage(suiChallengeMessage(nonce, origin, normalizeAddress(address), claimed[0].created_at), signature, address);
   } catch (error) {
     if (error instanceof SuiVerificationError) return failure(error.message, {}, 401);
     throw error;
@@ -44056,14 +44085,21 @@ accounts.post("/sui", async (c) => {
   let created = false;
   if (!user) {
     const short = `${verified.slice(0, 6)}...${verified.slice(-4)}`;
-    user = await createUser(sql, {
-      email: `${verified}@sui.studypilot.local`,
-      password: unusablePassword(),
-      full_name: `Sui Wallet ${short}`,
-      sui_address: verified
-    });
-    created = true;
+    try {
+      user = await createUser(sql, {
+        email: `${verified}@sui.studypilot.local`,
+        password: unusablePassword(),
+        full_name: `Sui Wallet ${short}`,
+        sui_address: verified
+      });
+      created = true;
+    } catch (error) {
+      const [winner] = await sql`select * from accounts_user where sui_address = ${verified}`;
+      if (!winner) throw error;
+      user = winner;
+    }
   }
+  if (!user.is_active) return failure("User account is disabled", {}, 403);
   await recordLogin(c.env, sql, user.id);
   return success("Sui login successful", { ...await authPayload(c.env, sql, user), created, sui_address: verified });
 });
@@ -44128,6 +44164,7 @@ accounts.post("/logout", async (c) => {
   if (!refresh) return failure("Refresh token is required");
   try {
     const payload = await decode(refresh, c.env.SECRET_KEY, "refresh");
+    if (Number(payload.user_id) !== c.get("user").id) return failure("Refresh token does not belong to this account", {}, 403);
     await blacklist(c.get("sql"), refresh, payload);
   } catch {
     return failure("Invalid refresh token", {}, 400);
@@ -45853,7 +45890,7 @@ flashcards.post("/decks", async (c) => {
   let documentId = null;
   if (body.document !== void 0 && body.document !== null) {
     documentId = toInt(body.document);
-    const exists = documentId === null ? [] : await sql`select 1 from documents_document where id = ${documentId}`;
+    const exists = documentId === null ? [] : await sql`select 1 from documents_document where id = ${documentId} and user_id = ${user.id}`;
     if (!exists.length) v.add("document", `Invalid pk "${str(body.document)}" - object does not exist.`);
   }
   if (!v.ok) return failure("Flashcard deck creation failed", v.errors);

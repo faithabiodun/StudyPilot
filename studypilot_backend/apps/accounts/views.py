@@ -31,21 +31,27 @@ from .serializers import (
     UserSerializer,
     validate_username_value,
 )
-from .sui import SuiVerificationError, verify_personal_message
+from .sui import SuiVerificationError, normalize_address, verify_personal_message
 
 User = get_user_model()
 
 SUI_CHALLENGE_TTL_SECONDS = 300
 
 
-def sui_challenge_message(nonce):
+def sui_challenge_message(nonce, origin, address, issued_at):
     """The exact text the wallet signs. Must match on both sides byte for byte."""
     return (
         "Sign in to StudyPilot\n\n"
         "This signature proves you own this wallet. "
         "It is free and does not create a transaction.\n\n"
-        f"Nonce: {nonce}"
+        f"Website: {origin}\nWallet: {address}\nNonce: {nonce}\n"
+        f"Issued at: {issued_at.isoformat(timespec='milliseconds').replace('+00:00', 'Z')}\n"
+        f"Expires at: {(issued_at + timedelta(seconds=SUI_CHALLENGE_TTL_SECONDS)).isoformat(timespec='milliseconds').replace('+00:00', 'Z')}"
     )
+
+
+def sui_auth_origin(request):
+    return getattr(settings, "SUI_AUTH_ORIGIN", "") or request.build_absolute_uri("/").rstrip("/")
 
 
 def tokens_for_user(user):
@@ -110,6 +116,13 @@ class GoogleAuthView(APIView):
         google_id = payload.get("sub")
         if not email or not google_id:
             return error_response("Google token missing required profile data", status_code=status.HTTP_400_BAD_REQUEST)
+        if payload.get("email_verified") is not True:
+            return error_response("Google email is not verified", status_code=status.HTTP_401_UNAUTHORIZED)
+        existing = User.objects.filter(email__iexact=email).first()
+        if existing and not existing.is_active:
+            return error_response("User account is disabled", status_code=status.HTTP_403_FORBIDDEN)
+        if existing and existing.google_id and existing.google_id != google_id:
+            return error_response("Google account does not match", status_code=status.HTTP_401_UNAUTHORIZED)
 
         user, created = User.objects.get_or_create(
             email=email.lower(),
@@ -163,6 +176,10 @@ class SupabaseGoogleAuthView(APIView):
             return error_response("Invalid Supabase session token.", status_code=status.HTTP_401_UNAUTHORIZED)
 
         payload = response.json()
+        app_metadata = payload.get("app_metadata") or {}
+        providers = app_metadata.get("providers") or [app_metadata.get("provider")]
+        if not payload.get("email_confirmed_at") or "google" not in providers:
+            return error_response("A verified Google account is required", status_code=status.HTTP_401_UNAUTHORIZED)
         email = (payload.get("email") or "").lower()
         supabase_user_id = payload.get("id", "")
         metadata = payload.get("user_metadata") or {}
@@ -178,6 +195,10 @@ class SupabaseGoogleAuthView(APIView):
             return error_response("Supabase user is missing required profile data", status_code=status.HTTP_400_BAD_REQUEST)
 
         user = User.objects.filter(email__iexact=email).first()
+        if user and not user.is_active:
+            return error_response("User account is disabled", status_code=status.HTTP_403_FORBIDDEN)
+        if user and user.supabase_user_id and user.supabase_user_id != supabase_user_id:
+            return error_response("Google account does not match", status_code=status.HTTP_401_UNAUTHORIZED)
         if not user:
             user = User.objects.create_user(
                 email=email,
@@ -216,13 +237,21 @@ class SuiChallengeView(APIView):
 
     def post(self, request):
         # Opportunistically drop expired rows so the table cannot grow forever.
+        try:
+            address = normalize_address(request.data.get("address"))
+        except SuiVerificationError as exc:
+            return error_response(str(exc))
         cutoff = timezone.now() - timedelta(seconds=SUI_CHALLENGE_TTL_SECONDS * 4)
         SuiLoginChallenge.objects.filter(created_at__lt=cutoff).delete()
 
         challenge = SuiLoginChallenge.objects.create(nonce=secrets.token_hex(16))
+        origin = sui_auth_origin(request)
         return success_response("Sui challenge issued", {
             "nonce": challenge.nonce,
-            "message": sui_challenge_message(challenge.nonce),
+            "message": sui_challenge_message(challenge.nonce, origin, address, challenge.created_at),
+            "origin": origin,
+            "address": address,
+            "issued_at": challenge.created_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
             "expires_in": SUI_CHALLENGE_TTL_SECONDS,
         })
 
@@ -259,25 +288,22 @@ class SuiAuthView(APIView):
             challenge.save(update_fields=["used_at"])
 
         try:
-            verified_address = verify_personal_message(sui_challenge_message(nonce), signature, address)
+            verified_address = verify_personal_message(
+                sui_challenge_message(nonce, sui_auth_origin(request), normalize_address(address), challenge.created_at),
+                signature, address,
+            )
         except SuiVerificationError as exc:
             return error_response(str(exc), status_code=status.HTTP_401_UNAUTHORIZED)
 
-        user = User.objects.filter(sui_address=verified_address).first()
-        created = False
-        if not user:
-            # A wallet carries no email or name, so stand in placeholders and let
-            # the existing Academic Passport onboarding collect the real details.
-            short = f"{verified_address[:6]}...{verified_address[-4:]}"
-            user = User.objects.create_user(
-                email=f"{verified_address}@sui.studypilot.local",
-                password=None,
-                full_name=f"Sui Wallet {short}",
-                role=User.Role.STUDENT,
-            )
-            user.sui_address = verified_address
-            user.save(update_fields=["sui_address", "updated_at"])
-            created = True
+        short = f"{verified_address[:6]}...{verified_address[-4:]}"
+        user, created = User.objects.get_or_create(
+            sui_address=verified_address,
+            defaults={"email": f"{verified_address}@sui.studypilot.local",
+                      "password": "!" + secrets.token_hex(20),
+                      "full_name": f"Sui Wallet {short}", "role": User.Role.STUDENT},
+        )
+        if not user.is_active:
+            return error_response("User account is disabled", status_code=status.HTTP_403_FORBIDDEN)
 
         record_login(user)
         payload = auth_payload(user)
@@ -346,7 +372,10 @@ class LogoutView(APIView):
         if not refresh_token:
             return error_response("Refresh token is required")
         try:
-            RefreshToken(refresh_token).blacklist()
+            token = RefreshToken(refresh_token)
+            if str(token["user_id"]) != str(request.user.id):
+                return error_response("Refresh token does not belong to this account", status_code=status.HTTP_403_FORBIDDEN)
+            token.blacklist()
         except Exception:
             return error_response("Invalid refresh token", status_code=status.HTTP_400_BAD_REQUEST)
         return success_response("Logout successful")

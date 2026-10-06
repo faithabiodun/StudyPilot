@@ -6,7 +6,7 @@ import type { Env } from "../env";
 import { Validator, failure, readJson, str, success } from "../http";
 import { blacklist, decode, isBlacklisted, accessFor, tokensFor, TokenError } from "../auth/jwt";
 import { checkPassword, hashPassword } from "../auth/password";
-import { SuiVerificationError, verifyPersonalMessage } from "../auth/sui";
+import { normalizeAddress, SuiVerificationError, verifyPersonalMessage } from "../auth/sui";
 import {
   createUser,
   requireUser,
@@ -31,12 +31,14 @@ const RESERVED_USERNAMES = new Set([
 ]);
 
 /** The exact text the wallet signs. Must match on both sides byte for byte. */
-export function suiChallengeMessage(nonce: string): string {
+export function suiChallengeMessage(nonce: string, origin: string, address: string, issuedAt: Date): string {
   return (
     "Sign in to StudyPilot\n\n" +
     "This signature proves you own this wallet. " +
     "It is free and does not create a transaction.\n\n" +
-    `Nonce: ${nonce}`
+    `Website: ${origin}\nWallet: ${address}\nNonce: ${nonce}\n` +
+    `Issued at: ${issuedAt.toISOString()}\n` +
+    `Expires at: ${new Date(issuedAt.getTime() + SUI_CHALLENGE_TTL_SECONDS * 1000).toISOString()}`
   );
 }
 
@@ -134,8 +136,11 @@ accounts.post("/google", async (c) => {
   const email = (payload.email || "").toLowerCase();
   const googleId = payload.sub;
   if (!email || !googleId) return failure("Google token missing required profile data", {}, 400);
+  if (payload.email_verified !== "true") return failure("Google email is not verified", {}, 401);
 
   let user = await userByEmail(sql, email);
+  if (user && !user.is_active) return failure("User account is disabled", {}, 403);
+  if (user?.google_id && user.google_id !== googleId) return failure("Google account does not match", {}, 401);
   if (!user) {
     user = await createUser(sql, {
       email,
@@ -173,7 +178,10 @@ accounts.post("/supabase-google", async (c) => {
   }
   if (response.status !== 200) return failure("Invalid Supabase session token.", {}, 401);
 
-  const payload = (await response.json()) as { email?: string; id?: string; user_metadata?: Record<string, string> };
+  const payload = (await response.json()) as { email?: string; id?: string; email_confirmed_at?: string; app_metadata?: { provider?: string; providers?: string[] }; user_metadata?: Record<string, string> };
+  if (!payload.email_confirmed_at || !(payload.app_metadata?.providers || [payload.app_metadata?.provider]).includes("google")) {
+    return failure("A verified Google account is required", {}, 401);
+  }
   const email = (payload.email || "").toLowerCase();
   const supabaseUserId = payload.id || "";
   const metadata = payload.user_metadata || {};
@@ -182,6 +190,8 @@ accounts.post("/supabase-google", async (c) => {
   if (!email || !supabaseUserId) return failure("Supabase user is missing required profile data", {}, 400);
 
   let user = await userByEmail(sql, email);
+  if (user && !user.is_active) return failure("User account is disabled", {}, 403);
+  if (user?.supabase_user_id && user.supabase_user_id !== supabaseUserId) return failure("Google account does not match", {}, 401);
   if (!user) {
     user = await createUser(sql, {
       email,
@@ -208,12 +218,21 @@ accounts.post("/supabase-google", async (c) => {
 
 accounts.post("/sui/challenge", async (c) => {
   const sql = c.get("sql");
+  const body = await readJson(c.req.raw);
+  let address: string;
+  try {
+    address = normalizeAddress(body.address);
+  } catch (error) {
+    return failure(error instanceof Error ? error.message : "Invalid wallet address");
+  }
   // Opportunistically drop expired rows so the table cannot grow forever.
   const cutoff = new Date(Date.now() - SUI_CHALLENGE_TTL_SECONDS * 4 * 1000);
   await sql`delete from accounts_suiloginchallenge where created_at < ${cutoff}`;
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
-  await sql`insert into accounts_suiloginchallenge (nonce, created_at) values (${nonce}, ${new Date()})`;
-  return success("Sui challenge issued", { nonce, message: suiChallengeMessage(nonce), expires_in: SUI_CHALLENGE_TTL_SECONDS });
+  const issuedAt = new Date();
+  const origin = new URL(c.env.SUI_AUTH_ORIGIN || c.req.url).origin;
+  await sql`insert into accounts_suiloginchallenge (nonce, created_at) values (${nonce}, ${issuedAt})`;
+  return success("Sui challenge issued", { nonce, message: suiChallengeMessage(nonce, origin, address, issuedAt), origin, address, issued_at: issuedAt.toISOString(), expires_in: SUI_CHALLENGE_TTL_SECONDS });
 });
 
 accounts.post("/sui", async (c) => {
@@ -243,7 +262,8 @@ accounts.post("/sui", async (c) => {
 
   let verified: string;
   try {
-    verified = await verifyPersonalMessage(suiChallengeMessage(nonce!), signature!, address!);
+    const origin = new URL(c.env.SUI_AUTH_ORIGIN || c.req.url).origin;
+    verified = await verifyPersonalMessage(suiChallengeMessage(nonce!, origin, normalizeAddress(address), claimed[0].created_at as Date), signature!, address!);
   } catch (error) {
     if (error instanceof SuiVerificationError) return failure(error.message, {}, 401);
     throw error;
@@ -256,14 +276,22 @@ accounts.post("/sui", async (c) => {
     // A wallet carries no email or name, so stand in placeholders and let the
     // Academic Passport onboarding collect the real details.
     const short = `${verified.slice(0, 6)}...${verified.slice(-4)}`;
-    user = await createUser(sql, {
-      email: `${verified}@sui.studypilot.local`,
-      password: unusablePassword(),
-      full_name: `Sui Wallet ${short}`,
-      sui_address: verified,
-    });
-    created = true;
+    try {
+      user = await createUser(sql, {
+        email: `${verified}@sui.studypilot.local`,
+        password: unusablePassword(),
+        full_name: `Sui Wallet ${short}`,
+        sui_address: verified,
+      });
+      created = true;
+    } catch (error) {
+      // Separate valid challenges can race to create the same wallet account.
+      const [winner] = (await sql`select * from accounts_user where sui_address = ${verified}`) as unknown as User[];
+      if (!winner) throw error;
+      user = winner;
+    }
   }
+  if (!user.is_active) return failure("User account is disabled", {}, 403);
   await recordLogin(c.env, sql, user.id);
   return success("Sui login successful", { ...(await authPayload(c.env, sql, user)), created, sui_address: verified });
 });
@@ -345,6 +373,7 @@ accounts.post("/logout", async (c) => {
   if (!refresh) return failure("Refresh token is required");
   try {
     const payload = await decode(refresh, c.env.SECRET_KEY, "refresh");
+    if (Number(payload.user_id) !== c.get("user").id) return failure("Refresh token does not belong to this account", {}, 403);
     await blacklist(c.get("sql"), refresh, payload);
   } catch {
     return failure("Invalid refresh token", {}, 400);

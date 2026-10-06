@@ -23,6 +23,7 @@ def append_unique(values, *items):
 
 
 SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-dev-key-change-me")
+SUI_AUTH_ORIGIN = os.getenv("SUI_AUTH_ORIGIN", "")
 RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
 DEFAULT_DEBUG = "False" if RENDER_EXTERNAL_HOSTNAME else "True"
 DEBUG = os.getenv("DEBUG", DEFAULT_DEBUG).lower() == "true"

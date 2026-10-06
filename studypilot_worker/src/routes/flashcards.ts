@@ -59,7 +59,7 @@ flashcards.post("/decks", async (c) => {
   let documentId: number | null = null;
   if (body.document !== undefined && body.document !== null) {
     documentId = toInt(body.document);
-    const exists = documentId === null ? [] : await sql`select 1 from documents_document where id = ${documentId}`;
+    const exists = documentId === null ? [] : await sql`select 1 from documents_document where id = ${documentId} and user_id = ${user.id}`;
     if (!exists.length) v.add("document", `Invalid pk "${str(body.document)}" - object does not exist.`);
   }
   if (!v.ok) return failure("Flashcard deck creation failed", v.errors);

@@ -72,6 +72,8 @@ class RegisterSerializer(serializers.Serializer):
     def create(self, validated_data):
         validated_data.pop("confirm_password")
         password = validated_data.pop("password")
+        # Privileged roles are assigned by administrators, never public signup.
+        validated_data["role"] = User.Role.STUDENT
         return User.objects.create_user(password=password, **validated_data)
 
 

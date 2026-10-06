@@ -73,11 +73,11 @@ export async function registerWithEmail(payload) {
  * The message text comes from the server so both sides sign the exact same
  * bytes; building it on the client would drift the moment either side changed.
  */
-export async function requestSuiChallenge() {
+export async function requestSuiChallenge(address) {
   const response = await apiRequest("/auth/sui/challenge/", {
     skipAuth: true,
     method: "POST",
-    body: JSON.stringify({})
+    body: JSON.stringify({ address })
   });
   return response?.data || response;
 }
@@ -227,6 +227,12 @@ export async function exchangeSupabaseGoogleToken(accessToken) {
 }
 
 export async function signOutEverywhere() {
+  const refresh = localStorage.getItem("studypilot_refresh_token");
+  try {
+    if (refresh) await apiRequest("/auth/logout/", { method: "POST", body: JSON.stringify({ refresh }) });
+  } catch (error) {
+    console.error("StudyPilot session revocation failed:", error);
+  }
   try {
     await apiRequest("/documents/cleanup-temp/", { method: "POST" });
   } catch (error) {

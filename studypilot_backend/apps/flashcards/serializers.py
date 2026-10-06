@@ -14,6 +14,11 @@ class FlashcardDeckSerializer(serializers.ModelSerializer):
     cards = FlashcardSerializer(many=True, read_only=True)
     card_count = serializers.IntegerField(source="cards.count", read_only=True)
 
+    def validate_document(self, value):
+        if value is not None and value.user_id != self.context["request"].user.id:
+            raise serializers.ValidationError("Document does not exist.")
+        return value
+
     class Meta:
         model = FlashcardDeck
         fields = ("id", "document", "course_title", "title", "description", "card_count", "cards", "created_at", "updated_at")

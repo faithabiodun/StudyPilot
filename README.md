@@ -57,6 +57,13 @@ rollback; see `studypilot_worker/README.md`. Supabase holds the database.
 
 ## Features at a glance
 
+Wallet sign-in signs a personal message containing the API website origin,
+wallet address, a one-time nonce, and a five-minute expiry. The browser validates
+the message before signing; the API verifies it and consumes the nonce atomically.
+Set `SUI_AUTH_ORIGIN` on the API when its public origin differs from the request
+URL seen by the host. Use the exact frontend or API origin, without a path.
+Old unsigned-context challenges expire during rollout; request a new challenge.
+
 | Feature | Route | What it does |
 | --- | --- | --- |
 | Dashboard | `/student/dashboard` | Stats, quick actions, 7 day study chart, recent activity, recommendations. |

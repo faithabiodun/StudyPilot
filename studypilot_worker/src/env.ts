@@ -8,6 +8,7 @@ export interface Env {
   SUPABASE_ANON_KEY: string;
   PASSWORD_FN_SECRET: string;
   GOOGLE_CLIENT_ID?: string;
+  SUI_AUTH_ORIGIN?: string;
 
   DEEPSEEK_API_KEY: string;
   DEEPSEEK_BASE_URL: string;

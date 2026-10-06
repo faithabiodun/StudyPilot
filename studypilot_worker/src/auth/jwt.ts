@@ -64,19 +64,24 @@ export async function decode(token: string, secret: string, expected: TokenPaylo
   } catch {
     throw new TokenError("Token is invalid");
   }
-  if (header.alg !== "HS256") throw new TokenError("Token is invalid");
-  const valid = await crypto.subtle.verify(
+  if (!header || header.alg !== "HS256" || !payload || typeof payload !== "object") throw new TokenError("Token is invalid");
+  let valid = false;
+  try { valid = await crypto.subtle.verify(
     "HMAC",
     await hmacKey(secret),
     b64urlDecode(parts[2]),
     encoder.encode(`${parts[0]}.${parts[1]}`),
-  );
+  ); } catch { throw new TokenError("Token is invalid"); }
   if (!valid) throw new TokenError("Token is invalid");
-  if (typeof payload.exp !== "number" || payload.exp <= Math.floor(Date.now() / 1000)) {
+  if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || payload.exp <= Math.floor(Date.now() / 1000)) {
     throw new TokenError("Token is expired");
   }
   if (payload.token_type !== expected) throw new TokenError("Token has wrong type");
-  if (!payload.jti || payload.user_id === undefined) throw new TokenError("Token contained no recognizable user identification");
+  if (typeof payload.jti !== "string" || !payload.jti ||
+      !["string", "number"].includes(typeof payload.user_id) ||
+      !/^[1-9]\d*$/.test(String(payload.user_id)) || !Number.isSafeInteger(Number(payload.user_id))) {
+    throw new TokenError("Token contained no recognizable user identification");
+  }
   return payload;
 }
 
