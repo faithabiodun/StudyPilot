@@ -1,10 +1,7 @@
 // Password hashing is delegated to a Supabase Edge Function (sp-password).
 //
-// Django stores PBKDF2-SHA256 hashes at 1,000,000+ iterations. Workers cannot
-// check those: WebCrypto in workerd caps PBKDF2 at 100,000 iterations, and the
-// free plan allows ~10ms of CPU per request, while one such hash takes several
-// hundred. The Edge Function runs on Deno with a 2s CPU budget and no cap, so it
-// verifies existing hashes unchanged and writes new ones in the same format,
+// Django stores PBKDF2-SHA256 hashes at 1,000,000+ iterations. The Edge Function
+// verifies existing hashes and writes new ones in the same format,
 // which keeps the Django backend a working rollback.
 
 import type { Env } from "../env";

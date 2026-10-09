@@ -1,10 +1,8 @@
-// sp-password: Django-compatible password hashing for the StudyPilot Worker.
+// sp-password: Django-compatible password hashing for the StudyPilot API.
 //
 // Why this exists: accounts created by the Django backend store
-// pbkdf2_sha256 hashes at 1,000,000+ iterations. Cloudflare Workers cap WebCrypto
-// PBKDF2 at 100,000 iterations and the free plan allows ~10ms of CPU, so the
-// Worker cannot check those hashes itself. Deno has no cap and Edge Functions get
-// 2s of CPU, so the Worker asks this function instead.
+// pbkdf2_sha256 hashes at 1,000,000+ iterations. This Edge Function keeps
+// password hashing separate from the API and preserves the existing auth flow.
 //
 // Hashes are read and written in Django's exact format, so the Django backend
 // can still log these users in if it is ever brought back.

@@ -22,7 +22,7 @@ class Document(models.Model):
     extracted_text = models.TextField(blank=True)
     focused_extracted_text = models.TextField(blank=True)
     # The best-scoring slices of the text for generation, first pass and retry.
-    # The Cloudflare Worker computes these in the browser at upload time so it
+    # The browser computes these at upload time so the API
     # does not re-scan the whole document on every request.
     study_context = models.TextField(blank=True, default="")
     study_context_retry = models.TextField(blank=True, default="")

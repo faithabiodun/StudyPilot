@@ -1,7 +1,4 @@
 export interface Env {
-  ASSETS: Fetcher;
-  HYPERDRIVE?: Hyperdrive;
-
   DATABASE_URL: string;
   SECRET_KEY: string;
   SUPABASE_URL: string;
@@ -9,6 +6,7 @@ export interface Env {
   PASSWORD_FN_SECRET: string;
   GOOGLE_CLIENT_ID?: string;
   SUI_AUTH_ORIGIN?: string;
+  VERCEL?: string;
 
   DEEPSEEK_API_KEY: string;
   DEEPSEEK_BASE_URL: string;

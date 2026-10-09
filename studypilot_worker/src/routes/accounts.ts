@@ -6,7 +6,7 @@ import type { Env } from "../env";
 import { Validator, failure, readJson, str, success } from "../http";
 import { blacklist, decode, isBlacklisted, accessFor, tokensFor, TokenError } from "../auth/jwt";
 import { checkPassword, hashPassword } from "../auth/password";
-import { normalizeAddress, SuiVerificationError, verifyPersonalMessage } from "../auth/sui";
+import { normalizeAddress, suiAuthOrigin, SuiVerificationError, SuiVerificationUnavailable, verifyPersonalMessage } from "../auth/sui";
 import {
   createUser,
   requireUser,
@@ -230,7 +230,7 @@ accounts.post("/sui/challenge", async (c) => {
   await sql`delete from accounts_suiloginchallenge where created_at < ${cutoff}`;
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
   const issuedAt = new Date();
-  const origin = new URL(c.env.SUI_AUTH_ORIGIN || c.req.url).origin;
+  const origin = suiAuthOrigin(c.req.url, c.env.SUI_AUTH_ORIGIN, c.env.VERCEL);
   await sql`insert into accounts_suiloginchallenge (nonce, created_at) values (${nonce}, ${issuedAt})`;
   return success("Sui challenge issued", { nonce, message: suiChallengeMessage(nonce, origin, address, issuedAt), origin, address, issued_at: issuedAt.toISOString(), expires_in: SUI_CHALLENGE_TTL_SECONDS });
 });
@@ -262,9 +262,10 @@ accounts.post("/sui", async (c) => {
 
   let verified: string;
   try {
-    const origin = new URL(c.env.SUI_AUTH_ORIGIN || c.req.url).origin;
+    const origin = suiAuthOrigin(c.req.url, c.env.SUI_AUTH_ORIGIN, c.env.VERCEL);
     verified = await verifyPersonalMessage(suiChallengeMessage(nonce!, origin, normalizeAddress(address), claimed[0].created_at as Date), signature!, address!);
   } catch (error) {
+    if (error instanceof SuiVerificationUnavailable) return failure(error.message, {}, 502);
     if (error instanceof SuiVerificationError) return failure(error.message, {}, 401);
     throw error;
   }

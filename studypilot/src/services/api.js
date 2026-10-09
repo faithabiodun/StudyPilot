@@ -3,9 +3,7 @@ export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "/api").replac
 const ACCESS_TOKEN_KEY = "studypilot_access_token";
 const REFRESH_TOKEN_KEY = "studypilot_refresh_token";
 
-// The API runs on Cloudflare Workers, which do not sleep, so these retries
-// only absorb a dropped or flaky connection ("Failed to fetch") rather than a
-// backend waking up.
+// Retry transient network failures on reads. Writes are not replayed.
 const NETWORK_RETRIES = 2;
 const RETRY_BACKOFF_MS = 2500;
 

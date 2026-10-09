@@ -1,7 +1,8 @@
 node_modules/
+# Ignore any historical local deployment state.
 .wrangler/
 dist/
-# Local secrets for `wrangler dev`. Never commit.
+# Keep historical local secrets excluded from Git.
 .dev.vars
 .dev.vars.*
 .env

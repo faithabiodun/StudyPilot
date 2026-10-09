@@ -40,8 +40,7 @@ function withTimeout(run) {
 /**
  * Step one for every YouTube tool: the server fetches the caption file (the
  * browser is not allowed to), and the browser turns it into clean text here.
- * Parsing an hour of captions is too much CPU for the free Cloudflare plan's
- * per-request budget, so it happens on the student's device instead.
+ * Parsing captions on the student's device keeps API requests smaller.
  */
 async function prepareTranscript(youtubeUrl, signal) {
   const response = await apiRequest("/youtube/transcript/", {

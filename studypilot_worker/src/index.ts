@@ -1,12 +1,11 @@
-// StudyPilot on Cloudflare Workers: the Django REST API ported to Hono, served
-// from the same Worker as the React frontend. Every path and response envelope
+// StudyPilot's Vercel API: the Django REST API ported to Hono.
+// Every path and response envelope
 // matches the Django backend, so the frontend only had to change what the
 // browser now does itself (reading PDFs, assembling Word files).
 
 import { Hono } from "hono";
 import { HttpError } from "./http";
 import { database, requireUser, type AppEnv } from "./auth/users";
-import { onWorkers } from "./runtime";
 import accounts from "./routes/accounts";
 import academics from "./routes/academics";
 import advisor from "./routes/advisor";
@@ -22,7 +21,7 @@ import youtube from "./routes/youtube";
 // "/api/documents" and "/api/documents/" both work. Django's URLs all ended in
 // a slash (APPEND_SLASH redirected the rest), and that is what the frontend
 // sends, so both forms have to resolve.
-const RUNTIME = onWorkers ? "cloudflare-workers" : "node";
+const RUNTIME = "node";
 
 const app = new Hono<AppEnv>({ strict: false });
 
@@ -81,13 +80,7 @@ app.onError((error, c) => {
   return c.json({ success: false, message: "Something went wrong on our side. Please try again.", errors: {} }, 500);
 });
 
-// Everything that is not the API is the React app. On Workers the assets
-// binding serves it (run_worker_first is scoped to /api/*, so this is mostly
-// local dev); on Vercel the platform serves the static build and never routes
-// these here.
-app.all("*", (c) => {
-  if (c.env?.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
-  return c.json({ detail: "Not found." }, 404);
-});
+// Vercel serves the React static build separately from this API function.
+app.all("*", (c) => c.json({ detail: "Not found." }, 404));
 
 export default app;

@@ -1,6 +1,4 @@
-// The app runs on Cloudflare Workers and on Vercel's Node runtime. This checks
-// the Node path: the module imports cleanly outside workerd, and requests are
-// handled with plain `process.env` in place of Worker bindings.
+// The Vercel API imports and handles requests on Node.
 
 import { describe, expect, it } from "vitest";
 import app from "../src/index";
@@ -25,7 +23,7 @@ describe("running on Node", () => {
     expect(response.status).toBe(404);
   });
 
-  it("requires a token, without a database connection or a waitUntil", async () => {
+  it("requires a token without opening a database connection", async () => {
     const response = await app.fetch(new Request("https://studypilot.test/api/auth/me/"), env);
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ detail: "Authentication credentials were not provided." });

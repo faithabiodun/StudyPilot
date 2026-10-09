@@ -1,7 +1,6 @@
 // Read a PDF in the browser. This mirrors extract_pdf_text from the Django
 // backend (same page and character caps, same "focus" range) so documents come
-// out the same as before; it moved here because the Cloudflare Worker has
-// neither PyMuPDF nor the CPU budget to parse a 50-page PDF.
+// out the same as before. Only extracted text is sent to the API.
 
 import { cleanExtractedText } from "@shared/text";
 import { selectStudyContext } from "@shared/context";

@@ -16,7 +16,7 @@ const address = key.toSuiAddress();
 const nonce = "a".repeat(32);
 const origin = "https://studypilot.test";
 
-function harness(rows: unknown[][], route = accounts) {
+function harness(rows: unknown[][], route = accounts, environment = env) {
   const queries: { text: string; values: unknown[] }[] = [];
   const sql = vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
     queries.push({ text: strings.join("?"), values });
@@ -28,13 +28,25 @@ function harness(rows: unknown[][], route = accounts) {
   app.route("/", route);
   const post = (path: string, body: unknown, headers = {}, host = origin) => app.request(`${host}${path}`, {
     method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body),
-  }, env);
+  }, environment);
   return { post, queries, sql };
 }
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("wallet login security", () => {
+  it("uses the public HTTPS origin for both challenge and verification behind Vercel", async () => {
+    const rows: unknown[][] = [[], []];
+    const { post } = harness(rows, accounts, { ...env, VERCEL: "1" });
+    const response = await post("/sui/challenge", { address }, {}, "http://studypilot.test");
+    const { data } = await response.json() as { data: { nonce: string; message: string; origin: string; issued_at: string } };
+    expect(data.origin).toBe(origin);
+    expect(data.message).toContain(`Website: ${origin}`);
+    const { signature } = await key.signPersonalMessage(new TextEncoder().encode(data.message));
+    rows.push([{ id: 1, created_at: new Date(data.issued_at) }], [{ id: 9, is_active: true, full_name: "Student" }], []);
+    expect((await post("/sui", { address, nonce: data.nonce, signature }, {}, "http://studypilot.test")).status).toBe(200);
+  });
+
   it("issues a message containing the website, canonical wallet and expiry", async () => {
     const { post } = harness([[], []]);
     const response = await post("/sui/challenge", { address });

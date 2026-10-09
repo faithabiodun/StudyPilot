@@ -7,6 +7,7 @@ import App from "./App.jsx";
 import ErrorBoundary from "./components/common/ErrorBoundary.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { wakeBackend } from "./services/api";
+import { supportsSuiSignIn } from "./utils/suiWallet";
 import "@mysten/dapp-kit/dist/index.css";
 import "./index.css";
 
@@ -27,7 +28,7 @@ createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <SuiClientProvider networks={networks} defaultNetwork="mainnet">
-        <WalletProvider autoConnect>
+        <WalletProvider autoConnect slushWallet={{ name: "StudyPilot" }} walletFilter={supportsSuiSignIn}>
           <BrowserRouter>
             <AuthProvider>
               <ErrorBoundary>

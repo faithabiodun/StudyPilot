@@ -1,7 +1,6 @@
 // Assemble the YouTube study document as a .docx in the browser. A port of
 // apps/youtube_docx/docx_builder.py: same sections, order, sizes and colours.
-// The Worker returns the structured content as JSON; building the file here
-// keeps that request inside the free Cloudflare plan's CPU budget.
+// The API returns structured content as JSON; the browser builds the file.
 
 import { cleanExtractedText } from "@shared/text";
 

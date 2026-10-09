@@ -69,9 +69,8 @@ memory.post("/progress", async (c) => {
   const state = body.done ? "done" : "active";
   const userId = c.get("user").id;
   if (!memwalEnabled(c.env)) return success("Persistent memory is not configured", { enabled: false, written: 0, queued: 0, error: "" });
-  // The student is mid-quiz and should not wait on a Walrus write, so the
-  // response returns at once and the write finishes in the background. It
-  // reports "queued" rather than claiming a write that has not happened yet.
+  // The Node function awaits submission to the relayer. Indexing still runs
+  // asynchronously, so report "queued" rather than confirmed persistence.
   await background(c as never, saveProgress(c.env, userId, key, label, payload, state));
   return success("Progress queued", { enabled: true, written: 0, queued: 1, error: "" });
 });
