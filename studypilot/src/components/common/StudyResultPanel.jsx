@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { rememberQuizCompletion } from "../../services/memoryService";
 import { Check, ChevronLeft, ChevronRight, RotateCcw, Sparkles, X } from "lucide-react";
 import Button from "./Button";
 
@@ -183,13 +184,13 @@ function ScoreRing({ percentage }) {
   );
 }
 
-function QuizRunner({ questions, onClose, initialAnswers = {}, onProgress }) {
+function QuizRunner({ questions, onClose, initialAnswers = {}, initialIndex = 0, onProgress, onComplete }) {
   const [answers, setAnswers] = useState(initialAnswers);
   const [revealed, setRevealed] = useState({});
   const [shakeKey, setShakeKey] = useState("");
   // One question at a time, like the flashcard deck. A long scroll of every
   // question made it easy to skip past ones you had not answered.
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(Math.max(0, Math.min(questions.length - 1, Number(initialIndex) || 0)));
 
   const keyOf = (question, index) => question.id || `${question.question}-${index}`;
 
@@ -221,6 +222,15 @@ function QuizRunner({ questions, onClose, initialAnswers = {}, onProgress }) {
   const revealedSubjective = subjectiveEntries.filter((entry) => revealed[entry.key]).length;
   const complete = objectiveTotal > 0 && answeredCount === objectiveTotal;
   const percentage = objectiveTotal ? Math.round((correctCount / objectiveTotal) * 100) : 0;
+  const savedCompletion = useRef(false);
+  useEffect(() => {
+    if (!complete) { savedCompletion.current = false; return; }
+    if (savedCompletion.current || !onComplete) return;
+    savedCompletion.current = true;
+    onComplete(objectiveEntries.map((entry) => ({ question_id: entry.question.id,
+      question: entry.question.question, subtopic: entry.question.subtopic,
+      selected_answer: answers[entry.key], correct_answer: entry.question.correct_answer })));
+  }, [complete, onComplete, objectiveEntries, answers]);
 
   const total = entries.length;
   const go = (next) => setIndex(Math.min(total - 1, Math.max(0, next)));
@@ -447,7 +457,7 @@ function QuizRunner({ questions, onClose, initialAnswers = {}, onProgress }) {
 /* Public component                                                    */
 /* ------------------------------------------------------------------ */
 
-export default function StudyResultPanel({ result, onClose }) {
+export default function StudyResultPanel({ result, onClose, initialAnswers, initialIndex, onProgress }) {
   if (!result) return null;
   const payload = result.data || result;
   const cards = dedupeCards(payload.cards || []);
@@ -457,7 +467,11 @@ export default function StudyResultPanel({ result, onClose }) {
     return <FlashcardDeck cards={cards} />;
   }
   if (questions.length) {
-    return <QuizRunner questions={questions} onClose={onClose} />;
+    return <QuizRunner questions={questions} onClose={onClose} initialAnswers={initialAnswers} initialIndex={initialIndex} onProgress={onProgress}
+      onComplete={(details) => rememberQuizCompletion({
+        title: payload.course_title || payload.source_title || payload.title || "Study quiz",
+        quizId: payload.id, details,
+      })} />;
   }
   return <p className="text-sm font-bold text-pilot-muted">No study items were generated. Please try again.</p>;
 }

@@ -11,7 +11,7 @@ import PageHeader from "../../components/layout/PageHeader";
 import UploadBox from "../../components/upload/UploadBox";
 import { generateFlashcards } from "../../services/flashcardService";
 import { fetchDeploymentHealth, MAX_PDF_UPLOAD_MB, uploadMaterial } from "../../services/materialService";
-import { generateMCQs, generateQuiz } from "../../services/quizService";
+import { fetchQuiz, generateMCQs, generateQuiz } from "../../services/quizService";
 import { fetchResumePoints, saveProgress } from "../../services/memoryService";
 
 const toolConfig = {
@@ -149,7 +149,7 @@ function SetupPanel({ selectedTool, setup, setSetup, loadingAction, onGenerate, 
   );
 }
 
-function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error, onClose, onGenerate, initialAnswers, onProgress }) {
+function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error, onClose, onGenerate, initialAnswers, initialIndex, onProgress }) {
   const config = selectedTool ? toolConfig[selectedTool] : null;
 
   useEffect(() => {
@@ -203,7 +203,7 @@ function ToolModal({ selectedTool, setup, setSetup, loadingAction, result, error
             <StagedProgress steps={generationSteps} note="Generation usually takes 10 to 30 seconds." />
           )}
           {!result && <SetupPanel selectedTool={selectedTool} setup={setup} setSetup={setSetup} loadingAction={loadingAction} onGenerate={onGenerate} result={result} />}
-          {result && <div className="mt-2"><StudyResultPanel result={result} onClose={onClose} initialAnswers={initialAnswers} onProgress={onProgress} /></div>}
+          {result && <div className="mt-2"><StudyResultPanel result={result} onClose={onClose} initialAnswers={initialAnswers} initialIndex={initialIndex} onProgress={onProgress} /></div>}
         </div>
       </section>
     </div>
@@ -228,6 +228,7 @@ export default function PDFStudioPage() {
   const [resumeItems, setResumeItems] = useState([]);
   const [progressKey, setProgressKey] = useState("");
   const [resumedAnswers, setResumedAnswers] = useState({});
+  const [resumedIndex, setResumedIndex] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -326,6 +327,7 @@ export default function PDFStudioPage() {
       const title = selectedTool === "flashcards" ? "Generated Flashcards" : selectedTool === "mcq" ? "Generated MCQs" : "Generated Mixed Quiz";
       setResult({ ...data, title });
       setResumedAnswers({});
+      setResumedIndex(0);
       setProgressKey(`pdf-${selectedTool}-${data.id || activeDocument.id}`);
       setStatus(toolConfig[selectedTool].success);
     } catch (generationError) {
@@ -339,21 +341,36 @@ export default function PDFStudioPage() {
   // Checkpointed as the student answers, so a closed tab is not lost work.
   const checkpoint = (answers, index) => {
     if (!progressKey || !result) return;
-    const total = (result.questions || result.cards || []).length;
+    const total = (result.questions || []).filter((question) => question.options?.length || question.question_type === "true_false").length;
     const done = Object.keys(answers).length >= total && total > 0;
     saveProgress({
       key: progressKey,
       label: `${result.title} from ${activeDocument?.title || "your PDF"}`,
-      payload: { answers, index, total, tool: selectedTool, document_id: activeDocument?.id },
+      payload: { answers, index, total, tool: selectedTool, document_id: activeDocument?.id, quiz_id: result.id },
       done
     });
   };
 
-  const resumeItem = (item) => {
-    setResumeItems([]);
-    setResumedAnswers(item.payload?.answers || {});
-    setProgressKey(item.key);
-    setStatus(`Resumed ${item.label}. Regenerate to continue where you stopped.`);
+  const resumeItem = async (item) => {
+    if (loadingAction) return;
+    const match = /^pdf-(mcq|quiz)-(\d+)$/.exec(item.key);
+    if (!match) { setError("This saved activity cannot be reopened as a quiz."); return; }
+    setError("");
+    setLoadingAction("resume");
+    try {
+      const response = await fetchQuiz(Number(item.payload?.quiz_id || match[2]));
+      const quiz = response.data;
+      setResult({ ...quiz, title: match[1] === "mcq" ? "Generated MCQs" : "Generated Mixed Quiz" });
+      setSelectedTool(match[1]);
+      setActiveDocument({ id: quiz.document, title: quiz.course_title || "your PDF" });
+      setResumedAnswers(item.payload?.answers || {});
+      setResumedIndex(item.payload?.index || 0);
+      setProgressKey(item.key);
+      setResumeItems((items) => items.filter((saved) => saved.key !== item.key));
+      setStatus(`Resumed ${item.label}. Your saved answers have been restored.`);
+    } catch (resumeError) {
+      setError(resumeError.message || "This quiz could not be reopened. It may have been deleted.");
+    } finally { setLoadingAction(""); }
   };
 
   return (
@@ -435,6 +452,7 @@ export default function PDFStudioPage() {
         onClose={closeToolModal}
         onGenerate={runGeneration}
         initialAnswers={resumedAnswers}
+        initialIndex={resumedIndex}
         onProgress={checkpoint}
       />
     </div>

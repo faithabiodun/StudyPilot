@@ -7,6 +7,8 @@ import { requireUser, type AppEnv } from "../auth/users";
 import { AINotConfigured, AIServiceError } from "../lib/ai";
 import { recordActivity } from "../services/activity";
 import { generateAdvisorResponse } from "../services/advisor";
+import { advisorStudySuggestions } from "../services/advisor-memory";
+import { rememberConversation } from "../memory/services";
 
 async function sessionsWithMessages(sql: Sql, userId: number, sessionId?: number) {
   const sessions = sessionId
@@ -30,6 +32,11 @@ async function sessionsWithMessages(sql: Sql, userId: number, sessionId?: number
 
 const advisor = new Hono<AppEnv>({ strict: false });
 advisor.use("*", requireUser);
+
+advisor.get("/suggestions", async (c) => {
+  const { recent_context: _, ...data } = await advisorStudySuggestions(c.env, c.get("sql"), c.get("user").id);
+  return success("Recent study suggestions", data);
+});
 
 advisor.get("/sessions", async (c) => success("Chat sessions fetched", await sessionsWithMessages(c.get("sql"), c.get("user").id)));
 
@@ -82,7 +89,14 @@ advisor.post("/chat", async (c) => {
   `;
   let advisorData;
   try {
-    advisorData = await generateAdvisorResponse(c.env, sql, user, message, documentId);
+    const earlier = await sql`
+      select m.sender, m.message from advisor_chatmessage m
+      join advisor_chatsession s on s.id = m.session_id
+      where s.user_id = ${user.id} and s.id = ${session.id} and m.id <> ${userMessage.id}
+      order by m.created_at desc, m.id desc limit 8
+    `;
+    const history = [...earlier].reverse().map((m) => `${m.sender}: ${str(m.message).slice(0, 1500)}`).join("\n").slice(-8000);
+    advisorData = await generateAdvisorResponse(c.env, sql, user, message, documentId, history);
   } catch (error) {
     if (error instanceof AINotConfigured) return failure(error.message, {}, 500);
     if (error instanceof AIServiceError) return failure("Advisor service failed to generate a response.", {}, 502);
@@ -95,6 +109,7 @@ advisor.post("/chat", async (c) => {
     values (${session.id}, 'assistant', ${advisorData.response}, ${replyAt}) returning id
   `;
   await sql`update advisor_chatsession set updated_at = ${replyAt} where id = ${session.id}`;
+  await rememberConversation(c.env, user.id, message, advisorData.response);
   await recordActivity(c.env, sql, user.id, "advisor_question", "Asked AI Advisor", `You asked: ${message.slice(0, 120)}`, { session_id: session.id });
   return success("Advisor response generated successfully", {
     ...advisorData,

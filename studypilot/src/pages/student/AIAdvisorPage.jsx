@@ -5,7 +5,7 @@ import DashboardCard from "../../components/common/DashboardCard";
 import PageHeader from "../../components/layout/PageHeader";
 import { useAuth } from "../../context/AuthContext";
 import RecentChats from "../../components/chat/RecentChats";
-import { fetchChatSession, fetchChatSessions, sendChatMessage } from "../../services/chatService";
+import { fetchChatSession, fetchChatSessions, fetchChatSuggestions, sendChatMessage } from "../../services/chatService";
 import { getCourseCode, getCourseLabel, getCourses } from "../../utils/user";
 
 export default function AIAdvisorPage() {
@@ -44,7 +44,21 @@ export default function AIAdvisorPage() {
   const [sessions, setSessions] = useState([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [activeSessionId, setActiveSessionId] = useState(null);
+  const [activeDocumentId, setActiveDocumentId] = useState(null);
+  const [studySuggestions, setStudySuggestions] = useState([]);
+  const [followups, setFollowups] = useState([]);
   const scrollRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    setStudySuggestions([]);
+    const refresh = () => fetchChatSuggestions().then((response) => {
+      if (active) setStudySuggestions(response?.data?.suggestions || []);
+    });
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => { active = false; window.removeEventListener("focus", refresh); };
+  }, [user?.id]);
 
   useEffect(() => {
     let active = true;
@@ -75,11 +89,15 @@ export default function AIAdvisorPage() {
     setMessages([GREETING]);
     setError("");
     setInput("");
+    setActiveDocumentId(null);
+    setFollowups([]);
   };
 
   const openSession = async (session) => {
     setError("");
     setActiveSessionId(session.id);
+    setActiveDocumentId(null);
+    setFollowups([]);
     // The list already carries the messages, so show them immediately and only
     // refetch to pick up anything newer.
     const seed = (session.messages || []).map((item) => ({ role: item.sender, text: item.message }));
@@ -93,7 +111,7 @@ export default function AIAdvisorPage() {
     }
   };
 
-  const ask = async (question) => {
+  const ask = async (question, documentId = activeDocumentId) => {
     const text = question.trim();
     if (!text || loading) return;
     setError("");
@@ -101,10 +119,12 @@ export default function AIAdvisorPage() {
     setInput("");
     setLoading(true);
     try {
-      const response = await sendChatMessage(text, { sessionId: activeSessionId });
+      const response = await sendChatMessage(text, { sessionId: activeSessionId, documentId });
       const data = response.data || {};
       setMessages((current) => [...current, { role: "assistant", text: data.response || "I could not generate a response right now." }]);
       if (data.session_id) setActiveSessionId(data.session_id);
+      setActiveDocumentId(documentId);
+      setFollowups(data.suggested_followups || []);
       refreshSessions();
     } catch (chatError) {
       setError(chatError.message || "AI Advisor could not respond right now.");
@@ -135,6 +155,16 @@ export default function AIAdvisorPage() {
           <div className="mt-4">
             <ChatInput value={input} onChange={setInput} onSubmit={submit} disabled={loading} />
           </div>
+          {followups.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2" aria-label="Follow-up questions">
+              {followups.map((question) => (
+                <button key={question} disabled={loading} onClick={() => ask(question)}
+                  className="rounded-xl border border-pilot-line bg-pilot-ice px-3 py-2 text-left text-sm text-pilot-muted hover:text-pilot-blue disabled:opacity-50">
+                  {question}
+                </button>
+              ))}
+            </div>
+          )}
         </section>
 
         <div className="space-y-6 xl:sticky xl:top-6 xl:self-start">
@@ -147,11 +177,15 @@ export default function AIAdvisorPage() {
           />
 
           <DashboardCard title="Suggested Questions For You">
+          {studySuggestions.length > 0 && <p className="mt-2 text-sm text-pilot-muted">Based on your recent study activity.</p>}
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            {prompts.map((question) => (
+            {[...studySuggestions, ...prompts.map((question) => ({ question }))]
+              .filter((item, index, items) => items.findIndex((other) => other.question === item.question) === index)
+              .slice(0, 9).map(({ question, document_id: documentId }) => (
               <button
                 key={question}
-                onClick={() => ask(question)}
+                onClick={() => ask(question, documentId || null)}
+                disabled={loading}
                 className="rounded-2xl border border-pilot-line bg-pilot-ice p-4 text-left text-sm font-bold leading-6 text-pilot-muted transition hover:-translate-y-0.5 hover:border-pilot-blue hover:bg-white hover:text-pilot-blue hover:shadow-soft"
               >
                 {question}

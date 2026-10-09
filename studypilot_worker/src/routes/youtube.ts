@@ -33,12 +33,13 @@ function choice(v: Validator, field: string, value: unknown, options: string[], 
   return text;
 }
 
-async function remember(c: { env: AppEnv["Bindings"] }, userId: number, metadata: VideoMetadata, extra: string) {
+async function remember(c: { env: AppEnv["Bindings"] }, userId: number, metadata: VideoMetadata, extra: string, content = "", sourceType = "youtube") {
   await rememberMaterial(c.env, userId, {
-    sourceType: "youtube",
+    sourceType,
     title: metadata.title || "a YouTube video",
     summary: extra,
     reference: metadata.video_id ? `https://www.youtube.com/watch?v=${metadata.video_id}` : "",
+    content,
   });
 }
 
@@ -170,8 +171,8 @@ youtube.post("/docx", async (c) => {
   }
 
   await recordActivity(c.env, c.get("sql"), user.id, "youtube_docx_generated", "YouTube to DOCX",
-    `You generated a study document from ${metadata.title || "a YouTube video"}.`, { video_id: metadata.video_id, source });
-  await remember(c, user.id, metadata, str(content.summary));
+    `You generated a study document from ${metadata.title || "a YouTube video"}.`, { video_id: metadata.video_id, source, source_title: metadata.title });
+  await remember(c, user.id, metadata, str(content.summary), JSON.stringify(content));
   return success("Study document generated", {
     content,
     metadata: { title: metadata.title, channel: metadata.channel, video_id: metadata.video_id },
@@ -215,8 +216,8 @@ youtube.post("/flashcards", async (c) => {
   if (!clean.length) return failure("StudyPilot could not build flashcards from this video. Try a more detailed lecture.", {}, 400);
 
   await recordActivity(c.env, c.get("sql"), user.id, "youtube_flashcards_generated", "YouTube Flashcards",
-    `You generated ${clean.length} flashcards from ${metadata.title || "a YouTube video"}.`, { video_id: metadata.video_id, count: clean.length });
-  await remember(c, user.id, metadata, `${clean.length} flashcards generated`);
+    `You generated ${clean.length} flashcards from ${metadata.title || "a YouTube video"}.`, { video_id: metadata.video_id, count: clean.length, source_title: metadata.title });
+  await remember(c, user.id, metadata, `${clean.length} flashcards generated`, JSON.stringify(clean), "youtube_flashcards");
   return success(
     "Flashcards generated successfully",
     { title: `${metadata.title || "YouTube"} Flashcards`, source_title: metadata.title, channel: metadata.channel, transcript_source: source, cards: clean },
@@ -256,8 +257,8 @@ youtube.post("/mcq", async (c) => {
   if (!questions.length) return failure("StudyPilot could not build MCQs from this video. Try a more detailed lecture.", {}, 400);
 
   await recordActivity(c.env, c.get("sql"), user.id, "youtube_mcq_generated", "YouTube MCQ Quiz",
-    `You generated ${questions.length} MCQs from ${metadata.title || "a YouTube video"}.`, { video_id: metadata.video_id, count: questions.length });
-  await remember(c, user.id, metadata, `${questions.length} MCQs generated`);
+    `You generated ${questions.length} MCQs from ${metadata.title || "a YouTube video"}.`, { video_id: metadata.video_id, count: questions.length, source_title: metadata.title });
+  await remember(c, user.id, metadata, `${questions.length} MCQs generated`, JSON.stringify(questions), "youtube_mcq");
   return success(
     "MCQ quiz generated successfully",
     { title: `${metadata.title || "YouTube"} MCQ Quiz`, source_title: metadata.title, channel: metadata.channel, transcript_source: source, questions },
@@ -304,8 +305,8 @@ youtube.post("/quiz", async (c) => {
   if (!questions.length) return failure("StudyPilot could not build a quiz from this video. Try a more detailed lecture.", {}, 400);
 
   await recordActivity(c.env, c.get("sql"), user.id, "youtube_quiz_generated", "YouTube Mixed Quiz",
-    `You generated ${questions.length} quiz questions from ${metadata.title || "a YouTube video"}.`, { video_id: metadata.video_id, count: questions.length });
-  await remember(c, user.id, metadata, `${questions.length} mixed questions generated`);
+    `You generated ${questions.length} quiz questions from ${metadata.title || "a YouTube video"}.`, { video_id: metadata.video_id, count: questions.length, source_title: metadata.title });
+  await remember(c, user.id, metadata, `${questions.length} mixed questions generated`, JSON.stringify(questions), "youtube_quiz");
   return success(
     "Mixed quiz generated successfully",
     { title: `${metadata.title || "YouTube"} Mixed Quiz`, source_title: metadata.title, channel: metadata.channel, transcript_source: source, questions },

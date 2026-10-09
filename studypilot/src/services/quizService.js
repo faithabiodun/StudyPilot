@@ -11,3 +11,7 @@ export function generateMCQs(payload) {
 export function fetchQuizzes() {
   return apiRequest("/quizzes/");
 }
+
+export function fetchQuiz(id) {
+  return apiRequest(`/quizzes/${id}/`);
+}

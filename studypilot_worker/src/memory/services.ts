@@ -53,7 +53,7 @@ export function memwalEnabled(env: Env): boolean {
 // keeping the client alive lets the SDK reuse its SEAL session key (5 minute
 // TTL) and relayer compatibility check across requests instead of rebuilding
 // both, with their Sui RPC round trips, on every request.
-let cached: { key: string; client: MemWal } | null = null;
+let cached: { key: string; promise: Promise<MemWal> } | null = null;
 
 // Imported on first use rather than at module load: the SDK pulls in the Sui
 // and SEAL libraries, and memory is optional, so a problem loading it must not
@@ -61,10 +61,14 @@ let cached: { key: string; client: MemWal } | null = null;
 async function client(env: Env): Promise<MemWal> {
   const key = `${env.MEMWAL_ACCOUNT_ID}:${env.MEMWAL_PRIVATE_KEY}`;
   if (!cached || cached.key !== key) {
-    const { MemWal } = await import("@mysten-incubation/memwal");
-    cached = { key, client: MemWal.create({ key: env.MEMWAL_PRIVATE_KEY!, accountId: env.MEMWAL_ACCOUNT_ID }) };
+    // Cache before awaiting the import: parallel context reads must share the
+    // same client instead of creating one SEAL session for every source.
+    cached = { key, promise: import("@mysten-incubation/memwal").then(({ MemWal }) =>
+      MemWal.create({ key: env.MEMWAL_PRIVATE_KEY!, accountId: env.MEMWAL_ACCOUNT_ID })) };
   }
-  return cached.client;
+  const pending = cached;
+  try { return await pending.promise; }
+  catch (error) { if (cached === pending) cached = null; throw error; }
 }
 
 function warn(what: string, userId: number, error: unknown) {
@@ -86,6 +90,7 @@ export function namespaceFor(userId: number, courseTitle: string): string {
 
 export const studyNamespaceFor = (userId: number) => `sp-u${userId}-studied`;
 export const progressNamespaceFor = (userId: number) => `sp-u${userId}-progress`;
+export const chatNamespaceFor = (userId: number) => `sp-u${userId}-chats`;
 
 /**
  * Returns [texts, truncated]. Truncated means recall came back full, so the
@@ -240,25 +245,100 @@ export async function resumePoints(env: Env, userId: number, limit = RECALL_LIMI
 export async function rememberMaterial(
   env: Env,
   userId: number,
-  opts: { sourceType: string; title: string; topic?: string; summary?: string; reference?: string },
+  opts: { sourceType: string; title: string; topic?: string; summary?: string; reference?: string; content?: string },
 ) {
   if (!memwalEnabled(env)) return { enabled: false, written: 0, error: "" };
   try {
     const namespace = studyNamespaceFor(userId);
+    // Keep the whole extracted/generated content in searchable chunks. Titles
+    // and counts alone cannot answer questions about a student's flashcards.
+    const singleLine = (value: string) => value.replace(/[\r\n\x00]+/g, " ").trim();
+    const at = new Date().toISOString();
     const text = buildMaterial(
       namespace,
       opts.topic || opts.title,
-      opts.sourceType,
-      opts.title,
-      opts.summary || "",
-      opts.reference || "",
+      opts.sourceType.replace(/[^a-z0-9_]/gi, "_"),
+      singleLine(opts.title).slice(0, 300),
+      singleLine(opts.summary || "").slice(0, 1000),
+      singleLine(opts.reference || "").slice(0, 500),
+      undefined,
+      at,
     );
-    await rememberAll(env, namespace, [text]);
-    return { enabled: true, written: 1, error: "" };
+    // Current inputs are capped at 200k characters; this is a second bound on
+    // the capture itself. It prevents oversized client content from flooding
+    // the memory service. Existing extracted PDFs also remain in the database.
+    const content = (opts.content || "").replace(/\x00/g, "").slice(0, 200000);
+    const texts = content ? Array.from({ length: Math.ceil(content.length / 3500) }, (_, i) =>
+      `${text}\nContent part ${i + 1}:\n${content.slice(i * 3500, (i + 1) * 3500)}`) : [text];
+    const written = await rememberAll(env, namespace, texts);
+    // The SDK accepts jobs and indexes them asynchronously. Do not claim
+    // confirmed Walrus storage until these jobs have finished.
+    return { enabled: true, written: 0, queued: written, error: "" };
   } catch (error) {
     warn("material write", userId, error);
     return { enabled: true, written: 0, error: errorText(error) };
   }
+}
+
+export interface StudyMemory {
+  title: string;
+  source: string;
+  summary: string;
+  reference: string;
+  saved_at: string;
+  excerpt?: string;
+}
+
+function materialFields(text: string, fallbackAt = ""): StudyMemory | null {
+  const record = parse(text);
+  if (!record || record.kind !== "MATERIAL") return null;
+  const field = (name: string) => text.split(/\r?\n/).find((line) => line.startsWith(name))?.slice(name.length).trim() || "";
+  const title = field("Studied: ");
+  return title ? { title, source: sourceOf(text.split("\n")[0]), summary: field("Covers: "),
+    reference: field("Reference: "), saved_at: checkpointAt(text.split("\n")[0]) || fallbackAt || record.on,
+    excerpt: text.includes("\nContent part ") ? text.slice(text.indexOf("\nContent part ")).slice(0, 2000) : "" } : null;
+}
+
+/** Recent feature activity, read back from this student's persistent memory. */
+export async function recentStudyMemories(env: Env, userId: number, limit = 8) {
+  if (!memwalEnabled(env)) return { enabled: false, items: [] as StudyMemory[], error: "" };
+  try {
+    const namespace = studyNamespaceFor(userId);
+    const result = await (await client(env)).recall({ namespace, query: "recent PDF flashcards mixed quiz YouTube resource search saved opened study material", limit: 50, sort: "recent" });
+    const unique = new Map<string, StudyMemory>();
+    for (const hit of result.results || []) {
+      if (parse(hit.text)?.namespace !== namespace) continue;
+      const item = materialFields(hit.text, hit.created_at);
+      if (!item) continue;
+      const key = `${item.source}:${item.reference}:${item.title}`;
+      if (!unique.has(key) || item.saved_at > unique.get(key)!.saved_at) unique.set(key, item);
+    }
+    const items = [...unique.values()].sort((a, b) => b.saved_at.localeCompare(a.saved_at)).slice(0, limit);
+    return { enabled: true, items, error: "" };
+  } catch (error) {
+    warn("recent study recall", userId, error);
+    return { enabled: true, items: [] as StudyMemory[], error: errorText(error) };
+  }
+}
+
+/** Conversations have their own namespace so they cannot bury study material. */
+export async function rememberConversation(env: Env, userId: number, question: string, answer: string) {
+  if (!memwalEnabled(env)) return;
+  try {
+    const namespace = chatNamespaceFor(userId);
+    await rememberAll(env, namespace, [
+      `CHAT | ${namespace} | ${new Date().toISOString()}\nQuestion: ${question.slice(0, 2000)}\nAnswer: ${answer.slice(0, 6000)}`,
+    ]);
+  } catch (error) { warn("chat write", userId, error); }
+}
+
+export async function conversationContext(env: Env, userId: number, query: string) {
+  if (!memwalEnabled(env)) return "";
+  try {
+    const namespace = chatNamespaceFor(userId);
+    const [texts] = await recallTexts(env, namespace, query, 3, MAX_RECALL_DISTANCE);
+    return texts.filter((text) => text.startsWith(`CHAT | ${namespace} | `)).map((text) => text.slice(0, 2500)).join("\n\n").slice(0, 6000);
+  } catch (error) { warn("chat recall", userId, error); return ""; }
 }
 
 /**
@@ -307,7 +387,7 @@ export async function materialContext(env: Env, userId: number, query: string, l
     const lines: string[] = [];
     for (const text of texts) {
       const record = parse(text);
-      if (!record || record.kind !== "MATERIAL") continue;
+      if (!record || record.kind !== "MATERIAL" || record.namespace !== namespace) continue;
       let title = "";
       let covers = "";
       for (const line of record.text.split(/\r?\n/)) {
@@ -316,9 +396,11 @@ export async function materialContext(env: Env, userId: number, query: string, l
       }
       if (!title) continue;
       const label = sourceOf(record.text) || "material";
-      lines.push(`- ${label} on ${record.on}: ${title}` + (covers ? ` — ${covers}` : ""));
+      const contentStart = record.text.indexOf("\nContent part ");
+      const content = contentStart >= 0 ? record.text.slice(contentStart).slice(0, 2500) : "";
+      lines.push(`- ${label} on ${record.on}: ${title}` + (covers ? ` — ${covers}` : "") + content);
     }
-    return lines.slice(0, maxLines).join("\n");
+    return lines.slice(0, maxLines).join("\n").slice(0, 12000);
   } catch (error) {
     warn("material recall", userId, error);
     return "";

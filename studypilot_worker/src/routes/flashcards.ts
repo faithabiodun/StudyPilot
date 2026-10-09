@@ -70,6 +70,11 @@ flashcards.post("/decks", async (c) => {
     returning id
   `;
   const [created] = await decksWithCards(sql, user.id, deck.id as number);
+  await recordActivity(c.env, sql, user.id, "flashcard_deck_created", "Created Flashcard Deck", `You created ${title}.`, {
+    deck_id: deck.id, source_title: title, ...(documentId ? { document_id: documentId } : {}),
+  });
+  await rememberMaterial(c.env, user.id, { sourceType: "flashcards", title: title!, topic: courseTitle || title,
+    summary: description || "", content: description || "", reference: documentId ? `document:${documentId}` : `deck:${deck.id}` });
   return success("Flashcard deck created", created, 201);
 });
 
@@ -148,6 +153,8 @@ flashcards.post("/generate", async (c) => {
     sourceType: "flashcards",
     title: `${deck.course_title || doc.title} flashcard deck`,
     summary: `${deck.card_count} cards from ${doc.title}`,
+    content: clean.map((card) => `Question: ${card.question}\nAnswer: ${card.answer}`).join("\n\n"),
+    reference: `document:${doc.id}`,
   });
   const message =
     deck.card_count < requested

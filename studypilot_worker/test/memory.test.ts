@@ -4,16 +4,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const store: { text: string; namespace: string }[] = [];
-const failures = { recall: false };
+const failures = { recall: false, write: false };
+const recalls: Record<string, unknown>[] = [];
 
 vi.mock("@mysten-incubation/memwal", () => ({
   MemWal: {
     create: () => ({
       async rememberBulkAsync(items: { text: string; namespace: string }[]) {
+        if (failures.write) throw new Error("write unavailable");
         store.push(...items);
         return { job_ids: items.map((_, i) => `job-${i}`) };
       },
-      async recall({ namespace, limit }: { namespace: string; limit: number }) {
+      async recall(options: { namespace: string; limit: number; sort?: string; maxDistance?: number }) {
+        recalls.push(options);
+        const { namespace, limit } = options;
         if (failures.recall) throw new Error("relayer down");
         const results = store.filter((m) => m.namespace === namespace).slice(0, limit);
         return { results: results.map((m) => ({ text: m.text, distance: 0.4, blob_id: "b" })), total: results.length };
@@ -31,6 +35,11 @@ const {
   studyHistory,
   weaknessBriefing,
   weaknessScore,
+  rememberMaterial,
+  recentStudyMemories,
+  materialContext,
+  rememberConversation,
+  conversationContext,
 } = await import("../src/memory/services");
 const { buildMastered, buildMiss, buildProgress, buildSession } = await import("../src/memory/records");
 
@@ -40,6 +49,52 @@ const disabled = { MEMWAL_ENABLED: "false", MEMWAL_ACCOUNT_ID: "", MEMWAL_PRIVAT
 beforeEach(() => {
   store.length = 0;
   failures.recall = false;
+  failures.write = false;
+  recalls.length = 0;
+});
+
+describe("study content and chatbot memory", () => {
+  it("persists actual generated flashcards in bounded chunks and reports queued indexing", async () => {
+    const content = "Question: What is 2NF? Answer: Remove partial dependencies.\n".repeat(180);
+    const result = await rememberMaterial(env, 1, { sourceType: "flashcards", title: "Database systems", content, reference: "document:7" });
+    expect(result).toMatchObject({ enabled: true, written: 0, queued: Math.ceil(content.length / 3500) });
+    expect(store.every((item) => item.namespace === "sp-u1-studied")).toBe(true);
+    expect(store[0].text).toContain("at:");
+    expect(store.map((item) => item.text.split(/\nContent part \d+:\n/)[1]).join("")).toBe(content);
+    expect(await materialContext(env, 1, "What was on my 2NF flashcards?")).toContain("Remove partial dependencies");
+  });
+
+  it("recalls recent material with recency ordering and collapses content chunks", async () => {
+    await rememberMaterial(env, 1, { sourceType: "pdf", title: "Lecture one", content: "a".repeat(8000), reference: "document:7" });
+    await rememberMaterial(env, 2, { sourceType: "search", title: "Other student's search" });
+    const recent = await recentStudyMemories(env, 1);
+    expect(recent.items).toHaveLength(1);
+    expect(recent.items[0]).toMatchObject({ title: "Lecture one", source: "pdf", reference: "document:7" });
+    expect(recalls.at(-1)).toMatchObject({ namespace: "sp-u1-studied", sort: "recent" });
+  });
+
+  it("keeps past chats separate and recalls only the same student's conversations", async () => {
+    await rememberConversation(env, 1, "Explain 2NF", "Remove partial dependencies.");
+    await rememberConversation(env, 2, "My private question", "Other answer");
+    expect(await conversationContext(env, 1, "Continue explaining 2NF")).toContain("Remove partial dependencies");
+    expect(await conversationContext(env, 1, "Continue explaining 2NF")).not.toContain("Other answer");
+    expect((await recentStudyMemories(env, 1)).items).toEqual([]);
+  });
+
+  it("reports memory outages without breaking capture or recall", async () => {
+    failures.write = true;
+    expect(await rememberMaterial(env, 1, { sourceType: "pdf", title: "Lecture" })).toMatchObject({ written: 0, error: "write unavailable" });
+    failures.recall = true;
+    expect(await recentStudyMemories(env, 1)).toMatchObject({ enabled: true, items: [], error: "relayer down" });
+    expect(await materialContext(env, 1, "PDF")).toBe("");
+    expect(await conversationContext(env, 1, "Chat")).toBe("");
+  });
+
+  it("does not claim persistence when memory is disabled", async () => {
+    expect(await rememberMaterial(disabled, 1, { sourceType: "pdf", title: "Lecture" })).toMatchObject({ enabled: false, written: 0 });
+    expect((await recentStudyMemories(disabled, 1)).items).toEqual([]);
+    expect(store).toEqual([]);
+  });
 });
 
 describe("namespaces", () => {

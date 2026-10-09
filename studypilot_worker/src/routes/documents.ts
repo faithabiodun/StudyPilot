@@ -127,6 +127,8 @@ documents.post("/upload", async (c) => {
     sourceType: "pdf",
     title: str(doc.title) || str(doc.original_filename),
     summary: cleanSafeString(text, "", 220),
+    content: focused || text,
+    reference: `document:${doc.id}`,
   });
 
   const limited = Boolean(body.extraction_limited);

@@ -24,3 +24,11 @@ export function saveProgress({ key, label, payload, done = false }) {
     { data: { written: 0 } }
   );
 }
+
+export function rememberQuizCompletion({ title, details, quizId }) {
+  const path = quizId ? `/quizzes/${quizId}/submit/` : "/memory/quiz-attempt/";
+  const payload = quizId
+    ? { answers: Object.fromEntries(details.map((item) => [String(item.question_id), item.selected_answer])) }
+    : { title, details };
+  return apiRequest(path, { method: "POST", body: JSON.stringify(payload) }, { data: { memory: { written: 0 } } });
+}

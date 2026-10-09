@@ -28,3 +28,7 @@ export function fetchChatSessions() {
 export function fetchChatSession(sessionId) {
   return apiRequest(`/advisor/sessions/${sessionId}/`);
 }
+
+export function fetchChatSuggestions() {
+  return apiRequest("/advisor/suggestions/", {}, { data: { suggestions: [], memory_enabled: false, memory_available: false } });
+}

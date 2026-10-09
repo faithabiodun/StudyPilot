@@ -160,6 +160,8 @@ quizzes.post("/generate", async (c) => {
     title: `${sourceTitle} mixed quiz (${count} questions)`,
     topic: sourceTitle,
     summary: `generated from ${doc.title}`,
+    content: JSON.stringify(questions),
+    reference: `document:${doc.id}`,
   });
   const message = count < requested ? "StudyPilot generated the strongest unique questions available from this PDF." : "Mixed quiz generated successfully";
   return success(message, quiz, 201);
@@ -212,6 +214,8 @@ quizzes.post("/generate-mcq", async (c) => {
     title: `${sourceTitle} MCQ quiz (${count} questions)`,
     topic: sourceTitle,
     summary: `generated from ${doc.title}`,
+    content: JSON.stringify(mcqs),
+    reference: `document:${doc.id}`,
   });
   const message = count < requested ? "StudyPilot generated the strongest unique questions available from this PDF." : "MCQ quiz generated successfully";
   return success(message, quiz, 201);
@@ -238,7 +242,9 @@ quizzes.post("/:id{[0-9]+}/submit", async (c) => {
   const map = answers as Record<string, unknown>;
 
   let correct = 0;
-  const details = quiz.questions.map((question) => {
+  const details = quiz.questions.filter((question) =>
+    !["theory", "short_answer"].includes(str(question.question_type)) || String(question.id) in map,
+  ).map((question) => {
     const raw = map[String(question.id)];
     const selected = raw === undefined || raw === null ? "" : String(raw);
     const isCorrect = selected === question.correct_answer;
@@ -258,6 +264,10 @@ quizzes.post("/:id{[0-9]+}/submit", async (c) => {
   // Persist what was answered, not just what was asked. Never throws: a memory
   // outage must not stop a student seeing their score.
   const memory = await recordQuizAttempt(c.env, user.id, str(quiz.course_title), details as never);
+  await rememberMaterial(c.env, user.id, {
+    sourceType: "quiz_attempt", title: `${quiz.course_title || "Study"} quiz results`, topic: str(quiz.course_title),
+    summary: `Scored ${correct} of ${total}.`, content: JSON.stringify(details), reference: `quiz:${quiz.id}`,
+  });
   await recordActivity(c.env, sql, user.id, "quiz_submitted", "Submitted quiz", `You scored ${correct} of ${total} on ${quiz.course_title || "a quiz"}.`, {
     quiz_id: quiz.id,
     score: correct,

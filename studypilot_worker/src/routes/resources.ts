@@ -39,14 +39,15 @@ resources.get("/recommendations", async (c) => {
     type,
     results_count: data.count,
   });
-  // Only worth remembering if the student typed something real and it found
-  // matches; partial words on the way to a query are noise.
-  if (query.length >= 3 && data.count > 0) {
+  // Remember real searches, including searches that returned no matches.
+  if (query.length >= 3) {
     await rememberMaterial(c.env, user.id, {
       sourceType: "search",
       title: `Looked for ${type} resources on ${query}`,
       topic: query,
+      reference: `search:${query.toLowerCase()}`,
       summary: `${data.count} results`,
+      content: data.results.map((item) => `${item.title}\n${item.description}\n${item.url}`).join("\n\n"),
     });
   }
   return success("Resources fetched successfully", data);
@@ -83,6 +84,7 @@ resources.post("/save", async (c) => {
     [row] = await sql`insert into resources_savedresource ${sql({ ...cleaned, user_id: user.id, created_at: new Date() } as never)} returning *`;
   }
   await recordActivity(c.env, sql, user.id, "resource_saved", "Saved Resource", `You saved ${cleaned.title}.`, {
+    source_title: cleaned.title,
     url: cleaned.url,
     resource_type: cleaned.resource_type,
   });
@@ -92,6 +94,7 @@ resources.post("/save", async (c) => {
     topic: cleaned.course_title || cleaned.title,
     summary: cleaned.description.slice(0, 200),
     reference: cleaned.url,
+    content: cleaned.description,
   });
   return success("Resource saved", serializeSaved(row), existing ? 200 : 201);
 });
@@ -108,6 +111,7 @@ resources.post("/track-open", async (c) => {
     url,
     resource_type: resourceType,
     source_name: sourceName,
+    source_title: title,
   });
   await rememberMaterial(c.env, user.id, {
     sourceType: "opened",

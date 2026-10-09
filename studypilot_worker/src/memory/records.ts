@@ -122,8 +122,10 @@ export function buildMaterial(
   summary: string,
   reference = "",
   date?: string,
+  at?: string,
 ): string {
   const lines = [`MATERIAL | ${namespace} | ${slugifyTopic(topic)} | ${on(date)} | source:${sourceType}`, `Studied: ${title}`];
+  if (at) lines[0] += ` at:${at}`;
   if (summary) lines.push(`Covers: ${summary}`);
   if (reference) lines.push(`Reference: ${reference}`);
   return lines.join("\n");
